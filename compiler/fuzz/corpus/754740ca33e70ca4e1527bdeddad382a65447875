@@ -1,0 +1,5 @@
+@c
+@paa) -> int
+  requires. true
+  ensures true
+ type  return 0
