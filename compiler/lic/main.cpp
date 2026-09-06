@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -34,6 +35,7 @@ int usage() {
             << "  lic check <file>       parse + typecheck\n"
             << "  lic build <file> -o <out> [--release]\n"
             << "  lic mir <file>         lower to MIR and dump\n"
+            << "  lic httpd <validate-config|explain-config> <cfg.toml>\n"
             << "  lic smoke-llvm         verify LLVM can emit main returning 0\n"
             << "  lic --version          print version\n";
   return 1;
@@ -364,6 +366,33 @@ int main(int argc, char** argv) {
     }
     std::cout << "smoke-llvm: ok (main returns 0)\n";
     return 0;
+  }
+  if (cmd == "httpd") {
+    // M1 wrapper: `lic httpd validate-config <cfg>` / `lic httpd
+    // explain-config <cfg>` delegate to the Python schema (the sanctioned
+    // interim surface, same delegation as scripts/lic-validate-httpd-config.sh
+    // and scripts/li-httpd-explain-config.sh) until the Li httpd surface
+    // lands. Exit codes propagate so the gate's reject loop works.
+    if (argc < 4) {
+      return usage();
+    }
+    const std::string sub = argv[2];
+    const std::string cfg = argv[3];
+    std::string scripts = "scripts";
+    if (const char* root = std::getenv("LI_REPO_ROOT")) {
+      scripts = std::string(root) + "/scripts";
+    }
+    std::string cmdline;
+    if (sub == "validate-config") {
+      cmdline = "python3 \"" + scripts + "/validate-httpd-config.py\" \"" + cfg +
+                "\"";
+    } else if (sub == "explain-config") {
+      cmdline = "python3 \"" + scripts + "/httpd_config.py\" \"" + cfg +
+                "\" --explain";
+    } else {
+      return usage();
+    }
+    return std::system(cmdline.c_str()) == 0 ? 0 : 1;
   }
   if (cmd == "parse") {
     if (argc < 3) {
