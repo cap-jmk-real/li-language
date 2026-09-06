@@ -152,19 +152,19 @@ std::optional<std::string> resolve_import_path(const std::string& module,
   if (const auto root = find_workspace_root(base_file)) {
     const std::string r = *root;
     // 2a. packages/li-<dash>/src/lib.li
-    const std::string p2a = r + "/packages/li-" + dash + "/src/lib.li";
+    const std::string p2a = r + "/packages/li-" + dash + "/src/lib.li";  // carve-out: import-resolver (compile-time package source lookup)
     if (auto p = candidate(p2a)) {
       return p;
     }
     // 2b. packages/<dash>/src/lib.li
-    const std::string p2b = r + "/packages/" + dash + "/src/lib.li";
+    const std::string p2b = r + "/packages/" + dash + "/src/lib.li";  // carve-out: import-resolver (compile-time package source lookup)
     if (auto p = candidate(p2b)) {
       return p;
     }
     // 2c. li_<rest> strips the li_ prefix, then packages/li-<dash>/src/lib.li
     if (mlen > 3 && m[0] == 'l' && m[1] == 'i' && m[2] == '_') {
       const std::string rest = m.substr(3);
-      const std::string p2c = r + "/packages/li-" + dash_convert(rest) + "/src/lib.li";
+      const std::string p2c = r + "/packages/li-" + dash_convert(rest) + "/src/lib.li";  // carve-out: import-resolver (compile-time package source lookup)
       if (auto p = candidate(p2c)) {
         return p;
       }
@@ -194,7 +194,7 @@ std::optional<std::string> resolve_import_path(const std::string& module,
         return p;
       }
       // 4. fallback packages/li-<dash>/src/lib.li
-      const std::string p4 = r + "/packages/li-" + dash_convert(stripped) + "/src/lib.li";
+      const std::string p4 = r + "/packages/li-" + dash_convert(stripped) + "/src/lib.li";  // carve-out: import-resolver (compile-time package source lookup)
       if (auto p = candidate(p4)) {
         return p;
       }

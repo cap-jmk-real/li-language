@@ -354,7 +354,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
       size_t p = 0;
       memcpy(buf + p, root, root_len);
       p = root_len;
-      memcpy(buf + p, "/packages/li-", 13);
+      memcpy(buf + p, "/packages/li-", 13);  /* carve-out: import-resolver */
       p += 13;
       for (size_t i = 0; i < mlen && p < sizeof(buf) - 1; ++i) {
         char c = module[i];
@@ -375,7 +375,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
       size_t p = 0;
       memcpy(buf + p, root, root_len);
       p = root_len;
-      memcpy(buf + p, "/packages/", 10);
+      memcpy(buf + p, "/packages/", 10);  /* carve-out: import-resolver */
       p += 10;
       for (size_t i = 0; i < mlen && p < sizeof(buf) - 1; ++i) {
         char c = module[i];
@@ -400,7 +400,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
         size_t p = 0;
         memcpy(buf + p, root, root_len);
         p = root_len;
-        memcpy(buf + p, "/packages/li-", 13);
+        memcpy(buf + p, "/packages/li-", 13);  /* carve-out: import-resolver */
         p = root_len + 13;
         for (size_t i = 0; i < slen && p < sizeof(buf) - 1; ++i) {
           char c = stripped[i];
@@ -478,7 +478,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
         size_t p = 0;
         memcpy(buf + p, root, root_len);
         p = root_len;
-        memcpy(buf + p, "/packages/li-", 13);
+        memcpy(buf + p, "/packages/li-", 13);  /* carve-out: import-resolver */
         p += 13;
         for (size_t i = 0; i < slen && p < sizeof(buf) - 1; ++i) {
           buf[p++] = stripped[i] == '.' ? '-' : stripped[i];
