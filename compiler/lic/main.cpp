@@ -1,3 +1,4 @@
+#include "li/ast_dump.hpp"
 #include "li/compile.hpp"
 #include "li/lexer.hpp"
 #include "li/mir.hpp"
@@ -374,6 +375,22 @@ int main(int argc, char** argv) {
       li::print_diagnostics(result.diagnostics);
       return 1;
     }
+    return 0;
+  }
+  if (cmd == "ast") {
+    // AST parity: canonical int-encoded pre-order dump matching the li
+    // bootstrap parser (bootstrap/lic/main.li `ast`). Parse only — no
+    // typecheck — so the gate compares pure parse-tree shape.
+    if (argc < 3) {
+      return usage();
+    }
+    const std::string source = read_file(argv[2]);
+    auto result = li::parse_module(source, argv[2]);
+    if (!result.ok() || !result.module) {
+      li::print_diagnostics(result.diagnostics);
+      return 1;
+    }
+    std::cout << li::dump_module_ast(*result.module, source);
     return 0;
   }
   if (cmd == "lex") {

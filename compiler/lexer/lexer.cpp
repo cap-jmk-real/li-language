@@ -240,11 +240,24 @@ bool Lexer::lex_number(Token& out, bool is_float_start) {
       advance();
     }
   }
+  // Literal suffixes (e.g. `f32` in `0.0f32`, `u64` in `1u64`) are consumed
+  // from the stream but excluded from the token text, matching the Li
+  // walker's lex_source (bootstrap/lic/main.li) so token streams stay
+  // byte-identical.
+  const std::size_t num_end = pos_;
+  while (!at_end()) {
+    const char c = peek();
+    if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
+      advance();
+    } else {
+      break;
+    }
+  }
   out.start = start;
-  out.end = pos_;
+  out.end = num_end;
   out.line = sl;
   out.column = sc;
-  out.text = std::string_view(source_).substr(start, pos_ - start);
+  out.text = std::string_view(source_).substr(start, num_end - start);
   if (is_float) {
     out.kind = TokenKind::FloatLit;
     out.float_value = std::stod(std::string(out.text));
