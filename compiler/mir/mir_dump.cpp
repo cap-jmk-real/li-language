@@ -118,8 +118,13 @@ void dump_insn(const MirInsn& i, D& d) {
   for (const auto& a : i.args) {
     dump_arg(a, d);
   }
-  for (const auto& p : i.object_layout) {
-    dump_param(p, "OBJ", d);
+  // OBJ layout lines are part of the walker ABI only for object-returning
+  // calls (INS 8) and ReturnObject (INS 4); whole-object field-store copies
+  // carry their leaf layout hidden (see MirInsn::obj_copy_src_mangled).
+  if (i.op == MirOp::CallProc || i.op == MirOp::ReturnObject) {
+    for (const auto& p : i.object_layout) {
+      dump_param(p, "OBJ", d);
+    }
   }
 }
 

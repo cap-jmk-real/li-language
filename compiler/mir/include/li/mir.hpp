@@ -67,6 +67,8 @@ enum class MirOp {
   ArraySimdScope,
 };
 
+struct MirParam;
+
 struct MirArg {
   bool is_literal = false;
   std::int64_t int_value = 0;
@@ -79,6 +81,11 @@ struct MirArg {
   bool is_array_ident = false;
   /** Pass `ident` scalar slot by address (CallProc `var` object field param). */
   bool is_var_ref = false;
+  /** Whole-object by-value ARG: the walker collapses the base name (a field
+   *  access or nested object-returning call) to one ARG; this records the
+   *  object's leaf layout so emit can expand it back into per-leaf values.
+   *  Not part of the MIR dump ABI (the walker emits the collapsed form). */
+  std::vector<MirParam> object_layout;
 };
 
 struct MirParam {
@@ -135,6 +142,12 @@ struct MirInsn {
   /** Layout entries under object root (`name` paths). Used for ReturnObject pack and CallProc
    *  unpack into `ident + "_" + name` (scalar locals or ArrayAlloc slots). */
   std::vector<MirParam> object_layout;
+  /** Whole-object field-store copy (walker INS 26 with object bases): when set,
+   *  object_layout holds the sub-object's leaf layout and emit expands the copy
+   *  into per-leaf stores (walkers prints only the whole-object line).
+   *  True when the rhs_ident base is already mangled (field/cr/call); a raw
+   *  object-var source needs the `__li_o_` prefix. Not part of the dump ABI. */
+  bool obj_copy_src_mangled = false;
 };
 
 struct MirDecorator {

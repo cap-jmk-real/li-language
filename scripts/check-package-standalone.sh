@@ -71,6 +71,11 @@ check_one() {
   trap 'rm -rf "$WORK"' RETURN
   mkdir -p "$WORK/packages"
 
+  # Ship the stdlib tree with the carved-out package: standalone installs
+  # bring the compiler's std/ modules (std.bytes, std.runtime.seam, ...), not
+  # access to the monorepo root.
+  cp -R "$ROOT/std" "$WORK/std"
+
   # Seed with the package itself, then follow path deps transitively.
   local -a added=("$PKG") processed=()
   while ((${#added[@]} > 0)); do

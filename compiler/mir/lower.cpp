@@ -888,6 +888,24 @@ std::string lower_expr_to(const Expr& e, const Module& module, std::vector<MirIn
             continue;
           }
           MirArg ma;
+          // Whole-object by-value args that are not object vars (field
+          // accesses like `d.tier`, nested object-returning calls, ...) lower
+          // to the walker's collapsed base name; record the object's leaf
+          // layout so emit expands the ARG back into per-leaf values.
+          if (ai < callee->params.size() &&
+              callee->params[ai].type.kind == TypeKind::Named &&
+              g_object_types.count(callee->params[ai].type.name) > 0) {
+            for (const auto& field : g_object_types[callee->params[ai].type.name]) {
+              MirParam lp;
+              lp.name = field.name;
+              lp.is_float = field.is_float;
+              lp.is_i64 = field.is_i64;
+              lp.is_array = field.array_elems > 0;
+              lp.array_size = static_cast<int>(field.array_elems);
+              lp.fixed_array_elems = field.array_elems;
+              ma.object_layout.push_back(std::move(lp));
+            }
+          }
           if (arg.kind == Expr::Kind::IntLit) {
             ma.is_literal = true;
             ma.int_value = arg.int_value;
@@ -1577,6 +1595,49 @@ void lower_stmt(const Stmt& stmt, const Module& module, bool returns_float, bool
           const auto vit = g_object_vars.find(base);
           if (vit != g_object_vars.end()) {
             const auto& fields = g_object_types[vit->second];
+            bool has_exact_leaf = false;
+            for (const auto& f : fields) {
+              if (f.name == field) {
+                has_exact_leaf = true;
+                break;
+              }
+            }
+            // Sub-object field: `o.rect = <src>` emits ONE whole-object INS 26
+            // (walker mir_assign via mir_ins_mangled) with the mangled dst
+            // base __li_o_<var>_<field> and the src as a raw object-var ident
+            // or an already-mangled base (field/cr/call). The sub-object leaf
+            // layout rides hidden on the insn so emit expands it per-leaf.
+            if (!has_exact_leaf) {
+              const std::string prefix = field + "_";
+              MirInsn ins;
+              ins.op = MirOp::StoreInt;
+              ins.ident = "__li_o_" + base + "_" + field;
+              ins.rhs_is_literal = false;
+              const bool raw_src = stmt.expr->kind == Expr::Kind::Ident &&
+                                   g_object_vars.count(stmt.expr->ident) > 0;
+              ins.obj_copy_src_mangled = !raw_src;
+              ins.rhs_ident =
+                  raw_src ? stmt.expr->ident
+                          : lower_expr_to(*stmt.expr, module, out, float_names,
+                                          float_arrays);
+              for (const auto& f : fields) {
+                if (f.name.rfind(prefix, 0) != 0) {
+                  continue;
+                }
+                MirParam lp;
+                lp.name = f.name.substr(prefix.size());
+                lp.is_float = f.is_float;
+                lp.is_i64 = f.is_i64;
+                lp.is_array = f.array_elems > 0;
+                lp.array_size = static_cast<int>(f.array_elems);
+                lp.fixed_array_elems = f.array_elems;
+                ins.object_layout.push_back(std::move(lp));
+              }
+              if (!ins.object_layout.empty()) {
+                out.push_back(std::move(ins));
+                break;
+              }
+            }
             bool is_float = false;
             for (const auto& f : fields) {
               if (f.name == field) {

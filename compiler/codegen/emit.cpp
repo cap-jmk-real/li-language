@@ -109,6 +109,10 @@ struct EmitCtx {
   // Per-callee flattened MirParam lists (module-wide), so call sites can pass
   // by address where the callee declares a `var` param.
   const std::unordered_map<std::string, const std::vector<MirParam>*>* fn_params = nullptr;
+  // Object-returning FN layout (RETPARAM list); ReturnIdent on an object
+  // return packs the ident's `_<field>` leaves into the struct (walker MIR
+  // text collapses whole-object returns to the base name).
+  const std::vector<MirParam>* ret_object_layout = nullptr;
 
   // All stack slots must live in the function entry block so every use is
   // dominated. The main `builder` floats with the current block; emit allocas
@@ -350,6 +354,37 @@ struct EmitCtx {
     }
   }
 
+  // Pack `ident`'s leaf locals (`ident + "_" + field.name`) into the object
+  // struct this function returns. Shared by ReturnObject (explicit layout on
+  // the insn) and ReturnIdent (FN-level RETPARAM layout).
+  llvm::Value* build_object_value(const std::string& ident,
+                                  const std::vector<MirParam>& layout) {
+    llvm::Value* value = llvm::UndefValue::get(ret_ty);
+    for (std::size_t i = 0; i < layout.size(); ++i) {
+      const auto& field = layout[i];
+      const std::string field_name = ident + "_" + field.name;
+      llvm::Value* field_value = nullptr;
+      if (field.is_array) {
+        auto it = arrays.find(field_name);
+        if (it != arrays.end() && it->second.alloca) {
+          field_value = builder->CreateLoad(it->second.alloca->getAllocatedType(),
+                                            it->second.alloca);
+        }
+      } else if (field.is_float) {
+        field_value = load_float(field_name);
+      } else if (field.is_i64) {
+        field_value = load_i64(field_name);
+      } else {
+        field_value = load_int(field_name);
+      }
+      if (!field_value) {
+        field_value = llvm::UndefValue::get(ret_ty->getStructElementType(static_cast<unsigned>(i)));
+      }
+      value = builder->CreateInsertValue(value, field_value, {static_cast<unsigned>(i)});
+    }
+    return value;
+  }
+
   llvm::Value* mir_arg_value(const MirArg& arg, bool ptr_param = false) {
     if (arg.is_string) {
       llvm::GlobalVariable* gv = emit_string_global(module, arg.str_value, str_counter);
@@ -360,6 +395,17 @@ struct EmitCtx {
     }
     if (arg.is_float_literal) {
       return llvm::ConstantFP::get(llvm::Type::getDoubleTy(context), arg.float_value);
+    }
+    // By-ref (`var`) scalar/object-leaf param read by value: load through the
+    // incoming pointer with the recorded kind (0=i32 1=f64 2=i64).
+    if (auto bit = byrefs.find(arg.ident); bit != byrefs.end()) {
+      if (bit->second.second == 1) {
+        return builder->CreateLoad(llvm::Type::getDoubleTy(context), bit->second.first);
+      }
+      if (bit->second.second == 2) {
+        return builder->CreateLoad(i64_ty(context), bit->second.first);
+      }
+      return builder->CreateLoad(i32_ty(context), bit->second.first);
     }
     if (float_locals.find(arg.ident) != float_locals.end()) {
       return load_float(arg.ident);
@@ -449,33 +495,14 @@ struct EmitCtx {
                                                     ins.float_value));
         return false;
       case MirOp::ReturnObject: {
-        llvm::Value* value = llvm::UndefValue::get(ret_ty);
-        for (std::size_t i = 0; i < ins.object_layout.size(); ++i) {
-          const auto& field = ins.object_layout[i];
-          const std::string field_name = ins.ident + "_" + field.name;
-          llvm::Value* field_value = nullptr;
-          if (field.is_array) {
-            auto it = arrays.find(field_name);
-            if (it != arrays.end() && it->second.alloca) {
-              field_value = builder->CreateLoad(it->second.alloca->getAllocatedType(),
-                                                it->second.alloca);
-            }
-          } else if (field.is_float) {
-            field_value = load_float(field_name);
-          } else if (field.is_i64) {
-            field_value = load_i64(field_name);
-          } else {
-            field_value = load_int(field_name);
-          }
-          if (!field_value) {
-            field_value = llvm::UndefValue::get(ret_ty->getStructElementType(static_cast<unsigned>(i)));
-          }
-          value = builder->CreateInsertValue(value, field_value, {static_cast<unsigned>(i)});
-        }
-        builder->CreateRet(value);
+        builder->CreateRet(build_object_value(ins.ident, ins.object_layout));
         return false;
       }
       case MirOp::ReturnIdent:
+        if (ret_object_layout && !ret_object_layout->empty()) {
+          builder->CreateRet(build_object_value(ins.ident, *ret_object_layout));
+          return false;
+        }
         if (ins.ret_is_float || returns_float || float_locals.count(ins.ident) > 0) {
           builder->CreateRet(load_float(ins.ident));
         } else if (ret_ty && ret_ty->isIntegerTy(64)) {
@@ -496,6 +523,28 @@ struct EmitCtx {
         (void)ensure_i64_local(ins.ident);
         return true;
       case MirOp::StoreInt: {
+        if (!ins.object_layout.empty()) {
+          // Whole-object field-store copy (walker INS 26 with object bases):
+          // expand into per-leaf stores using the hidden sub-object layout.
+          // A raw object-var source needs the __li_o_ prefix; field/cr/call
+          // bases are already mangled (obj_copy_src_mangled).
+          for (const auto& f : ins.object_layout) {
+            const std::string dst = ins.ident + "_" + f.name;
+            const std::string src = (ins.obj_copy_src_mangled ? "" : "__li_o_") +
+                                    ins.rhs_ident + "_" + f.name;
+            if (f.is_float) {
+              builder->CreateStore(load_float(src),
+                                   store_target(dst, true, false));
+            } else if (f.is_i64) {
+              builder->CreateStore(load_i64(src),
+                                   store_target(dst, false, true));
+            } else {
+              builder->CreateStore(load_int(src),
+                                   store_target(dst, false, false));
+            }
+          }
+          return true;
+        }
         llvm::Value* val = ins.rhs_is_literal ? int32_val(*builder, context, ins.rhs_int)
                                               : load_int(ins.rhs_ident);
         builder->CreateStore(val, store_target(ins.ident, false, false));
@@ -585,18 +634,69 @@ struct EmitCtx {
           }
         }
         std::vector<llvm::Value*> args;
+        // Running index into the callee's flattened params: whole-object
+        // expansion consumes layout.size() params for one MirArg.
+        std::size_t pi = 0;
         for (std::size_t ai = 0; ai < ins.args.size(); ++ai) {
-          llvm::Argument* parg = ai < callee->arg_size() ? callee->getArg(ai) : nullptr;
+          const MirArg& marg = ins.args[ai];
+          if (!marg.object_layout.empty()) {
+            // Whole-object by-value ARG: the walker collapses the base name
+            // (field access or nested object-returning call) into one ARG;
+            // emit expands it back into per-leaf values so the call matches
+            // the callee's flattened leaf signature. The MIR text stays
+            // byte-exact with the walker.
+            const std::vector<MirParam>& layout = marg.object_layout;
+            for (std::size_t k = 0; k < layout.size(); ++k, ++pi) {
+              const MirParam& leaf = layout[k];
+              const std::string leaf_name = marg.ident + "_" + leaf.name;
+              llvm::Argument* parg =
+                  pi < callee->arg_size() ? callee->getArg(pi) : nullptr;
+              const bool leaf_var =
+                  cparams && pi < cparams->size() &&
+                  (*cparams)[pi].is_var && !(*cparams)[pi].is_array;
+              llvm::Value* val = nullptr;
+              if (leaf_var) {
+                if (auto bit = byrefs.find(leaf_name); bit != byrefs.end()) {
+                  val = bit->second.first;
+                } else if (leaf.is_float) {
+                  val = ensure_float_local(leaf_name);
+                } else if (leaf.is_i64) {
+                  val = ensure_i64_local(leaf_name);
+                } else {
+                  val = ensure_int_local(leaf_name);
+                }
+              } else if (leaf.is_array) {
+                auto ait = arrays.find(leaf_name);
+                if (ait != arrays.end() && ait->second.alloca) {
+                  val = builder->CreatePtrToInt(ait->second.alloca, i64_ty(context));
+                } else {
+                  val = llvm::ConstantInt::get(i64_ty(context), 0);
+                }
+              } else if (leaf.is_float) {
+                val = load_float(leaf_name);
+              } else if (leaf.is_i64) {
+                val = load_i64(leaf_name);
+              } else {
+                val = load_int(leaf_name);
+              }
+              if (parg) {
+                val = coerce_arg(val, parg->getType());
+              }
+              args.push_back(val);
+            }
+            continue;
+          }
+          llvm::Argument* parg = pi < callee->arg_size() ? callee->getArg(pi) : nullptr;
           const bool callee_var =
-              cparams && ai < cparams->size() &&
-              (*cparams)[ai].is_var && !(*cparams)[ai].is_array &&
-              ins.args[ai].ident.empty() == false;
+              cparams && pi < cparams->size() &&
+              (*cparams)[pi].is_var && !(*cparams)[pi].is_array &&
+              marg.ident.empty() == false;
           llvm::Value* val = nullptr;
           if (callee_var) {
             // `var` scalar/object-leaf param: pass the address of the caller's
             // slot (or forward the caller's own by-ref pointer unchanged).
-            const MirParam& pp = (*cparams)[ai];
-            const std::string& src = ins.args[ai].ident;
+            const MirParam& pp = (*cparams)[pi];
+            const std::string& src = marg.ident;
             if (auto bit = byrefs.find(src); bit != byrefs.end()) {
               val = bit->second.first;
             } else if (pp.is_float) {
@@ -610,13 +710,13 @@ struct EmitCtx {
               val = coerce_arg(val, parg->getType());
             }
           } else {
-            val = mir_arg_value(ins.args[ai],
-                                parg && parg->getType() == i8_ptr(context));
+            val = mir_arg_value(marg, parg && parg->getType() == i8_ptr(context));
             if (parg) {
               val = coerce_arg(val, parg->getType());
             }
           }
           args.push_back(val);
+          ++pi;
         }
         llvm::CallInst* call = builder->CreateCall(callee, args);
         if (!ins.ident.empty()) {
@@ -826,6 +926,9 @@ bool emit_llvm_ir(const MirModule& mir, const std::string& out_path, std::string
     EmitCtx ctx{context, module.get(), func, &builder, ret_ty, fn.returns_float,
                 {}, {}, {}, {}, {}, entry, new llvm::IRBuilder<>(entry)};
     ctx.fn_params = &fn_params;
+    if (fn.returns_object) {
+      ctx.ret_object_layout = &fn.return_object_layout;
+    }
 
     unsigned idx = 0;
     for (auto& arg : func->args()) {
