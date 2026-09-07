@@ -48,6 +48,21 @@ std::string read_file(const char* path) {
   return ss.str();
 }
 
+// Single-quote an argument for the POSIX shell so `std::system` cannot be
+// made to execute shell metacharacters embedded in a path/script name.
+std::string shell_quote(const std::string& s) {
+  std::string out = "'";
+  for (const char c : s) {
+    if (c == '\'') {
+      out += "'\\''";
+    } else {
+      out += c;
+    }
+  }
+  out += "'";
+  return out;
+}
+
 // Repo-relative build path (LI_REPO_ROOT/build/<rel>, fallback "build/<rel>").
 // Mirrors li::repo_build_path without pulling the common library into lic.
 std::string repo_build_path(const char* relative) {
@@ -382,16 +397,17 @@ int main(int argc, char** argv) {
     if (const char* root = std::getenv("LI_REPO_ROOT")) {
       scripts = std::string(root) + "/scripts";
     }
-    std::string cmdline;
+    std::string script;
     if (sub == "validate-config") {
-      cmdline = "python3 \"" + scripts + "/validate-httpd-config.py\" \"" + cfg +
-                "\"";
+      script = scripts + "/validate-httpd-config.py";
     } else if (sub == "explain-config") {
-      cmdline = "python3 \"" + scripts + "/httpd_config.py\" \"" + cfg +
-                "\" --explain";
+      script = scripts + "/httpd_config.py";
     } else {
       return usage();
     }
+    std::string cmdline = "python3 " + shell_quote(script) + " " +
+                          shell_quote(cfg) +
+                          (sub == "explain-config" ? " --explain" : "");
     return std::system(cmdline.c_str()) == 0 ? 0 : 1;
   }
   if (cmd == "parse") {
