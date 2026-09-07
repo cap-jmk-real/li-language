@@ -5,8 +5,11 @@
 # is declared in std/runtime/seam.li and defined in runtime/li_rt_net.c only
 # under `#ifdef __linux__`, with no `#else` stub — so li-net-httpd failed at
 # link time on macOS/arm64 with "symbol(s) not found". This gate builds + runs
-# a program that calls the seam and asserts the non-Linux stub answers -1
-# (the Linux implementation can only return >= 0 or block, never -1).
+# a program that calls the seam and asserts the seam contract on each platform:
+#   * non-Linux: the `#else` stub answers -1 (never a real epoll result);
+#   * Linux: with a real epoll fd and timeout 0, an empty epoll returns 0
+#     immediately (probing with an invalid fd is fatal by design — the Linux
+#     implementation aborts via net_fail, it never returns -1 cleanly).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LIC="${LIC:-$("$ROOT/scripts/resolve-lic.sh")}"
@@ -14,7 +17,40 @@ TMP="$(mktemp -d)"
 BIN="$TMP/httpd_epoll_seam"
 SRC="$TMP/httpd_epoll_seam.li"
 
-cat > "$SRC" <<'EOF'
+if [[ "$(uname -s)" == "Linux" ]]; then
+  cat > "$SRC" <<'EOF'
+# Runtime regression: the httpd epoll seam must link on Linux and answer an
+# empty-epoll poll (timeout 0) with 0. Declared here without std imports to
+# keep the probe self-contained, mirroring the seam in std/runtime/seam.li.
+extern def epoll_create1_i() -> int
+  requires true
+  ensures true
+  decreases 0
+
+extern def epoll_wait_tagged_timeout_ms_i(epfd: var int, events: var ptr, max_events: var int, timeout_ms: var int) -> int
+  requires epfd >= 0
+  ensures true
+  decreases 0
+
+def main() -> int
+  requires true
+  ensures result == 0
+  decreases 0
+=
+  var epfd: int = epoll_create1_i()
+  if epfd < 0:
+    return 2
+  var events: ptr
+  var max_events: int = 8
+  var timeout_ms: int = 0
+  var n: int = epoll_wait_tagged_timeout_ms_i(epfd, events, max_events, timeout_ms)
+  # Empty epoll with timeout 0 returns immediately with 0 events.
+  if n != 0:
+    return 1
+  return 0
+EOF
+else
+  cat > "$SRC" <<'EOF'
 # Runtime regression: the httpd epoll seam must link on non-Linux (missing #else stub).
 extern def epoll_wait_tagged_timeout_ms_i(epfd: var int, events: var ptr, max_events: var int, timeout_ms: var int) -> int
   requires epfd >= 0
@@ -36,6 +72,7 @@ def main() -> int
     return 1
   return 0
 EOF
+fi
 
 "$LIC" build "$SRC" -o "$BIN" --allow-open-vc --no-lean-verify >/dev/null 2>&1
 "$BIN"
@@ -45,3 +82,4 @@ if [[ $rc -ne 0 ]]; then
   echo "check_httpd_epoll_seam_runtime: FAILED (rc=$rc)" >&2
   exit 1
 fi
+echo "check_httpd_epoll_seam_runtime: ok"

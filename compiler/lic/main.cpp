@@ -394,6 +394,31 @@ int check_file(const char* path) {
   return 0;
 }
 
+std::size_t count_mir_vectorized_proc(const li::MirModule& mir) {
+  std::size_t n = 0;
+  for (const auto& fn : mir.functions) {
+    for (const auto& d : fn.decorators) {
+      if (d.vectorized) {
+        ++n;
+        break;
+      }
+    }
+  }
+  return n;
+}
+
+std::size_t count_mir_parallel_disjoint_proven(const li::MirModule& mir) {
+  std::size_t n = 0;
+  for (const auto& fn : mir.functions) {
+    for (const auto& d : fn.decorators) {
+      if (d.parallel && d.disjoint_proven) {
+        ++n;
+      }
+    }
+  }
+  return n;
+}
+
 // VC summary + MIR-linked witness telemetry (restored `lic verify`, dropped in
 // the c132e1a9 squash merge; gates in li-tests/tooling/lic_verify_smoke.sh and
 // contracts_verify_lean.sh depend on it). `--lean` runs the semantics stub.
@@ -412,6 +437,8 @@ int verify_file(const char* path, bool run_lean) {
             << " requires=" << vc.requires_count << " ensures=" << vc.ensures_count
             << " witnessed_ensures=" << ws.ensures_witnessed
             << " mir_return_linked=" << ws.mir_return_linked
+            << " mir_vectorized_proc=" << count_mir_vectorized_proc(mir)
+            << " mir_parallel_disjoint=" << count_mir_parallel_disjoint_proven(mir)
             << " decreases=" << vc.decreases_count << " invariant=" << vc.invariant_count
             << '\n';
   if (vc.requires_count == 0 && vc.ensures_count == 0) {

@@ -21,6 +21,22 @@ bool has_shell_metacharacters(const std::string& value) {
 
 }  // namespace
 
+void maybe_keep_emit_ll(const std::string& ll_path) {
+  const char* keep = std::getenv("LI_KEEP_LL");
+  if (keep == nullptr || keep[0] != '1' || keep[1] != '\0') {
+    return;
+  }
+  std::string prefix = "build";
+  if (const char* root = std::getenv("LI_REPO_ROOT")) {
+    prefix = std::string(root) + "/build";
+  }
+  std::error_code ec;
+  std::filesystem::create_directories(prefix, ec);
+  const std::filesystem::path dest = std::filesystem::path(prefix) / "last_emit.ll";
+  std::filesystem::copy_file(ll_path, dest,
+                             std::filesystem::copy_options::overwrite_existing, ec);
+}
+
 bool compile_module(const Module& module, const std::string& output_path, bool release,
                   const std::string& extra_clang_flags, std::string* error) {
   if (has_shell_metacharacters(output_path)) {
@@ -46,6 +62,11 @@ bool compile_module(const Module& module, const std::string& output_path, bool r
   if (!emit_llvm_ir(mir, ll_path, error)) {
     return false;
   }
+
+  // LI_KEEP_LL=1 keeps the emitted IR at build/last_emit.ll for release-bound
+  // tooling (check_release_bounds_ir.sh greps it). Restored slice dropped in
+  // the c132e1a9 squash merge.
+  maybe_keep_emit_ll(ll_path);
 
   if (output_path == "/dev/null") {
     std::filesystem::remove(ll_path);
