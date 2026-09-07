@@ -1,5 +1,6 @@
 #include "li/ast_dump.hpp"
 #include "li/compile.hpp"
+#include "li/resource_options.hpp"
 #include "li/lexer.hpp"
 #include "li/mir.hpp"
 #include "li/mir_dump.hpp"
@@ -9,6 +10,8 @@
 #include "li/smoke_llvm.hpp"
 #include "li/typecheck.hpp"
 #include "li/vc_emit.hpp"
+#include "li/vc_summary.hpp"
+#include "li/vc_witness.hpp"
 
 #include <algorithm>
 #include <array>
@@ -34,6 +37,7 @@ int usage() {
             << "  lic ast <file>         dump AST\n"
             << "  lic check <file>       parse + typecheck\n"
             << "  lic build <file> -o <out> [--release]\n"
+            << "  lic verify <file>      VC summary; --lean runs semantics stub\n"
             << "  lic mir <file>         lower to MIR and dump\n"
             << "  lic httpd <validate-config|explain-config> <cfg.toml>\n"
             << "  lic smoke-llvm         verify LLVM can emit main returning 0\n"
@@ -390,7 +394,10 @@ int check_file(const char* path) {
   return 0;
 }
 
-int build_file(const char* path, const char* output, bool release) {
+// VC summary + MIR-linked witness telemetry (restored `lic verify`, dropped in
+// the c132e1a9 squash merge; gates in li-tests/tooling/lic_verify_smoke.sh and
+// contracts_verify_lean.sh depend on it). `--lean` runs the semantics stub.
+int verify_file(const char* path, bool run_lean) {
   const std::string source = read_file(path);
   li::Module module;
   li::DiagnosticBag diags;
@@ -398,12 +405,36 @@ int build_file(const char* path, const char* output, bool release) {
     li::print_diagnostics(diags);
     return 1;
   }
-  std::string err;
-  if (!li::compile_module(module, output, release, "", &err)) {
-    std::cerr << "build failed: " << err << '\n';
-    return 1;
+  const li::MirModule mir = li::lower_to_mir(module);
+  const li::VcSummary vc = li::summarize_vcs(module);
+  const li::VcWitnessStats ws = li::compute_vc_witness_stats(module, &mir);
+  std::cout << "verify: procs=" << vc.proc_count << " mir_fns=" << mir.functions.size()
+            << " requires=" << vc.requires_count << " ensures=" << vc.ensures_count
+            << " witnessed_ensures=" << ws.ensures_witnessed
+            << " mir_return_linked=" << ws.mir_return_linked
+            << " decreases=" << vc.decreases_count << " invariant=" << vc.invariant_count
+            << '\n';
+  if (vc.requires_count == 0 && vc.ensures_count == 0) {
+    std::cerr << "verify: warning \u2014 no procedure contracts (G-vc partial)\n";
   }
-  return 0;
+  if (std::getenv("LI_EMIT_VCS") != nullptr) {
+    const std::string vc_path = repo_build_path("vcs.json");
+    std::string vc_err;
+    if (!li::write_vcs_json(module, vc_path, &vc_err)) {
+      std::cerr << "verify: " << vc_err << '\n';
+    } else {
+      std::cout << "verify: wrote " << vc_path << '\n';
+    }
+  }
+  if (!run_lean) {
+    return 0;
+  }
+  std::string script = "scripts/lean-verify-stub.sh";
+  if (const char* root = std::getenv("LI_REPO_ROOT")) {
+    script = std::string(root) + "/" + script;
+  }
+  const std::string cmd = "bash " + shell_quote(script);
+  return std::system(cmd.c_str()) == 0 ? 0 : 1;
 }
 
 }  // namespace
@@ -622,6 +653,18 @@ int main(int argc, char** argv) {
     }
     return check_file(argv[2]);
   }
+  if (cmd == "verify") {
+    if (argc < 3) {
+      return usage();
+    }
+    bool run_lean = false;
+    for (int i = 3; i < argc; ++i) {
+      if (std::string_view(argv[i]) == "--lean") {
+        run_lean = true;
+      }
+    }
+    return verify_file(argv[2], run_lean);
+  }
   if (cmd == "build") {
     if (argc < 3) {
       return usage();
@@ -630,6 +673,7 @@ int main(int argc, char** argv) {
     const char* output = "/dev/null";
     bool release = false;
     std::string extra_flags;
+    li::reset_resource_options();
     for (int i = 2; i < argc; ++i) {
       const std::string_view arg = argv[i];
       if (arg == "-o" && i + 1 < argc) {
@@ -639,6 +683,8 @@ int main(int argc, char** argv) {
       } else if (arg == "--allow-open-vc") {
         li::proof_cli_flags().allow_open_vc = true;
       } else if (arg == "--no-lean-verify") {
+        continue;
+      } else if (li::apply_resource_flag(arg, li::resource_options())) {
         continue;
       } else if (input == nullptr) {
         input = argv[i];
@@ -650,6 +696,8 @@ int main(int argc, char** argv) {
     if (input == nullptr) {
       return usage();
     }
+    li::finalize_resource_options(li::resource_options());
+    li::note_compile_jobs_reserved(li::resource_options());
     const std::string source = read_file(input);
     li::Module module;
     li::DiagnosticBag diags;
@@ -662,12 +710,18 @@ int main(int argc, char** argv) {
       std::cerr << "build failed: " << err << '\n';
       return 1;
     }
-    // AutoVC emission: every build regenerates build/generated/AutoVC.lean so
-    // the Lean discharge tooling (li-tests/tooling/discharge_*_lean.sh and the
-    // lake-build CI stage) can typecheck the proof obligations. Restore of the
-    // slice dropped in the c132e1a9 squash merge; emission only — the
-    // build-gating checks live in the tooling scripts.
-    const std::string vc_lean = repo_build_path("generated/AutoVC.lean");
+    // AutoVC emission: every build regenerates build/generated/AutoVC.lean (or
+    // <build-dir>/generated when --build-dir= is given) so the Lean discharge
+    // tooling (li-tests/tooling/discharge_*_lean.sh and the lake-build CI
+    // stage) can typecheck the proof obligations. Restore of the slice dropped
+    // in the c132e1a9 squash merge; emission only — the build-gating checks
+    // live in the tooling scripts.
+    std::string vc_lean;
+    if (!li::resource_options().build_dir.empty()) {
+      vc_lean = li::resource_options().build_dir + "/generated/AutoVC.lean";
+    } else {
+      vc_lean = repo_build_path("generated/AutoVC.lean");
+    }
     std::error_code fs_err;
     std::filesystem::create_directories(std::filesystem::path(vc_lean).parent_path(), fs_err);
     std::size_t native_closed = 0;

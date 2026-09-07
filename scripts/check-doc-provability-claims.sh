@@ -16,9 +16,10 @@ check_file() {
   fi
 }
 
+# The gaps doc is the inventory itself; it cannot link to itself.
 while IFS= read -r -d '' f; do
   check_file "$f"
-done < <(find "$ROOT/docs" -name '*.md' -print0)
+done < <(find "$ROOT/docs" -name '*.md' ! -name "$GAPS" -print0)
 
 if [[ "$FAIL" -ne 0 ]]; then
   exit 1
