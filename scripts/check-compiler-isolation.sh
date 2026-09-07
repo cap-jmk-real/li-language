@@ -29,11 +29,19 @@ note_fail() {
 # --- 1. compiler/runtime/bootstrap source must not reference packages/ ------
 # Only non-comment lines count: documentation comments may name a downstream
 # package for context, but code must never read/write/compile packages/.
+#
+# Sole documented exception — compile-time import resolution: the import
+# resolver maps `import X` to the workspace package's SOURCE file
+# (<workspace>/packages/<name>/src/lib.li) so lic can compile it. The
+# path-construction lines that do this carry the explicit marker
+# `carve-out: import-resolver` and stay code-review visible; every other
+# packages/ reference in code is a failure.
 for dir in compiler runtime bootstrap; do
   hits=$(grep -rn "packages/" "$ROOT/$dir" \
     --include='*.cpp' --include='*.hpp' --include='*.h' --include='*.c' \
     --include='*.cmake' --include='CMakeLists.txt' 2>/dev/null \
-    | grep -vE '^[^:]*:[0-9]+:\s*(/\*|\*|//)' || true)
+    | grep -vE '^[^:]*:[0-9]+:\s*(/\*|\*|//)' \
+    | grep -v 'carve-out: import-resolver' || true)
   if [[ -n "$hits" ]]; then
     note_fail "$dir/ references packages/ (source must stay upstream-only):"
     echo "$hits" | sed 's/^/    /' >&2

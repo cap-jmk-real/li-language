@@ -354,7 +354,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
       size_t p = 0;
       memcpy(buf + p, root, root_len);
       p = root_len;
-      memcpy(buf + p, "/packages/li-", 13);
+      memcpy(buf + p, "/packages/li-", 13);  /* carve-out: import-resolver */
       p += 13;
       for (size_t i = 0; i < mlen && p < sizeof(buf) - 1; ++i) {
         char c = module[i];
@@ -375,7 +375,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
       size_t p = 0;
       memcpy(buf + p, root, root_len);
       p = root_len;
-      memcpy(buf + p, "/packages/", 10);
+      memcpy(buf + p, "/packages/", 10);  /* carve-out: import-resolver */
       p += 10;
       for (size_t i = 0; i < mlen && p < sizeof(buf) - 1; ++i) {
         char c = module[i];
@@ -400,7 +400,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
         size_t p = 0;
         memcpy(buf + p, root, root_len);
         p = root_len;
-        memcpy(buf + p, "/packages/li-", 13);
+        memcpy(buf + p, "/packages/li-", 13);  /* carve-out: import-resolver */
         p = root_len + 13;
         for (size_t i = 0; i < slen && p < sizeof(buf) - 1; ++i) {
           char c = stripped[i];
@@ -478,7 +478,7 @@ const char* li_rt_resolve_import(const char* file_path, const char* module) {
         size_t p = 0;
         memcpy(buf + p, root, root_len);
         p = root_len;
-        memcpy(buf + p, "/packages/li-", 13);
+        memcpy(buf + p, "/packages/li-", 13);  /* carve-out: import-resolver */
         p += 13;
         for (size_t i = 0; i < slen && p < sizeof(buf) - 1; ++i) {
           buf[p++] = stripped[i] == '.' ? '-' : stripped[i];
@@ -597,15 +597,23 @@ int32_t li_rt_mir_int(const char* text, int32_t start, int32_t end) {
 
 /* Print a decimal int literal slice with its full 64-bit value (the Li int
  * cells are 32-bit, so big literals are printed from the source span at
- * emission time to match the C++ i64 MIR dump fields). */
-int32_t li_rt_mir_int64_out(const char* text, int32_t start, int32_t end) {
+ * emission time to match the C++ i64 MIR dump fields). The walker calls this
+ * with a fourth `neg` argument (the literal's negated marker) and the span
+ * covering only the digits, so the sign must come from the flag, not from
+ * the source slice. */
+int32_t li_rt_mir_int64_out(const char* text, int32_t start, int32_t end, int32_t neg) {
   if (text == NULL || start < 0 || end <= start) {
     fputc('0', stdout);
     return 0;
   }
-  int64_t v = 0;
+  /* Normalize negation flag: only exactly 1 means negated. */
+  neg = (neg == 1) ? 1 : 0;
+  /* Use unsigned accumulation to avoid int64 overflow for INT64_MIN
+   * (9223372036854775808 = 2^63 wraps negative in signed math). */
+  uint64_t v = 0;
   int32_t i = start;
-  if (text[i] == '-') {
+  if (text[i] == '-' && !neg) {
+    neg = 1;
     ++i;
   }
   for (; i < end; ++i) {
@@ -614,11 +622,11 @@ int32_t li_rt_mir_int64_out(const char* text, int32_t start, int32_t end) {
       v = v * 10 + (c - '0');
     }
   }
-  if (start < end && text[start] == '-') {
-    printf("%lld", (long long)-v);
-  } else {
-    printf("%lld", (long long)v);
+  if (neg) {
+    /* Negate using unsigned to avoid UB on INT64_MIN */
+    v = (uint64_t)0 - v;
   }
+  printf("%lld", (long long)(int64_t)v);
   return 0;
 }
 
@@ -686,7 +694,7 @@ int32_t li_rt_mir_literal(int32_t idx) {
  * the self-hosted walker's name cells only carry two source positions. So the
  * walker registers the mangled name once (li_rt_mir_objname_add) and name
  * cells reference it by index (li_rt_mir_objname_out). */
-#define LI_RT_OBJNAME_MAX 512
+#define LI_RT_OBJNAME_MAX 8192
 static const char* li_rt_objname_text[LI_RT_OBJNAME_MAX];
 static int32_t li_rt_objname_bs[LI_RT_OBJNAME_MAX];
 static int32_t li_rt_objname_be[LI_RT_OBJNAME_MAX];

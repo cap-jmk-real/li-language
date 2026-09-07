@@ -86,16 +86,6 @@ struct Dumper {
     i64(b);
     nl();
   }
-  void line_iii(int code, std::int64_t a, std::int64_t b, std::int64_t c) {
-    out << code;
-    sep();
-    i64(a);
-    sep();
-    i64(b);
-    sep();
-    i64(c);
-    nl();
-  }
   void line_text_text(int code, const std::string& a, const std::string& b) {
     out << code;
     sep();
@@ -130,6 +120,9 @@ void dump_expr(const Expr& e, Dumper& d);
 void dump_type(const TypeExpr& t, Dumper& d);
 void dump_stmt(const Stmt& s, Dumper& d);
 
+// BinOp token-kind numbering: the walker (bootstrap/lic/main.li) emits the
+// raw operator token kind (opk) for each binop node (code 65), so the C++
+// dump must map BinOp back to the same token kinds.
 int binop_token_kind(BinOp b) {
   switch (b) {
     case BinOp::Add: return 59;        // Plus
@@ -160,9 +153,6 @@ void dump_expr(const Expr& e, Dumper& d) {
       break;
     case Expr::Kind::FloatLit:
       d.line_lex(61, e.span);
-      break;
-    case Expr::Kind::BinaryLit:
-      d.line_lex(62, e.span);
       break;
     case Expr::Kind::StringLit:
       d.line_lex(63, e.span);
@@ -200,33 +190,22 @@ void dump_expr(const Expr& e, Dumper& d) {
         dump_expr(*e.index, d);
       }
       break;
-    case Expr::Kind::FieldAccess:
+    case Expr::Kind::Field: {
+      // `.field` access. The walker emits the base subtree first, then the
+      // code-69 line naming the field (the stream order is: base, 69 field).
       dump_expr(*e.base, d);
-      d.line_text(69, e.field_name);
-      break;
-    case Expr::Kind::MethodCall:
-      dump_expr(*e.base, d);
-      d.line_text(70, e.field_name);
-      for (const auto& a : e.args) {
-        dump_expr(*a, d);
+      // The parser stores the field name as an Ident expr in `index`.
+      std::string name;
+      if (e.index && e.index->kind == Expr::Kind::Ident) {
+        name = e.index->ident;
       }
+      d.line_text(69, name);
       break;
+    }
     case Expr::Kind::Await:
       d.line(71);
       if (e.operand) {
         dump_expr(*e.operand, d);
-      }
-      break;
-    case Expr::Kind::Conditional:
-      d.line(83);
-      if (e.operand) {
-        dump_expr(*e.operand, d);
-      }
-      if (e.cond) {
-        dump_expr(*e.cond, d);
-      }
-      if (e.rhs) {
-        dump_expr(*e.rhs, d);
       }
       break;
   }
@@ -244,6 +223,7 @@ void dump_type(const TypeExpr& t, Dumper& d) {
       }
       break;
     case TypeKind::Refinement:
+      // Walker: `22 <var> 0` then base type then predicate expr.
       d.line_text_i(22, t.refinement_var, 0);
       if (t.refinement_base) {
         dump_type(*t.refinement_base, d);
@@ -269,7 +249,7 @@ void dump_type(const TypeExpr& t, Dumper& d) {
           dump_type(*a, d);
         }
         // `tuple[T, ...]`: the Ellipsis follows the first arg, so the marker
-        // (code 82) prints after the args on both implementations.
+        // (code 82) prints after the args.
         if (t.name == "tuple" && t.tuple_variadic) {
           d.line(82);
         }
@@ -288,10 +268,9 @@ void dump_type(const TypeExpr& t, Dumper& d) {
       d.line_text_i(25, t.name, t.is_var ? 1 : 0);
       break;
     case TypeKind::NamedTuple:
-      d.line_ii(26, t.is_var ? 1 : 0, t.tuple_variadic ? 1 : 0);
+      d.line_ii(26, t.is_var ? 1 : 0, 0);
       for (const auto& f : t.named_fields) {
-        d.line_text_ii(27, f.name, f.optional ? 1 : 0,
-                       f.visibility == Visibility::Private ? 1 : 0);
+        d.line_text_ii(27, f.name, f.optional ? 1 : 0, f.public_field ? 0 : 1);
         if (f.type) {
           dump_type(*f.type, d);
         }
@@ -307,24 +286,13 @@ void dump_contract(const Contract& c, Dumper& d) {
     case ContractKind::Ensures: kind = 1; break;
     case ContractKind::Decreases: kind = 2; break;
     case ContractKind::Invariant: kind = 3; break;
-    case ContractKind::ProbEnsures: kind = 4; break;
   }
   // The proposition is parsed before the given/samples tail, so the expr
-  // prints first and the contract line after it (both implementations).
+  // prints first and the contract line after it.
   if (c.expr) {
     dump_expr(*c.expr, d);
   }
-  d.line_i_text_i(7, kind, c.prob_given, c.prob_samples);
-}
-
-void dump_decorator(const Decorator& deco, Dumper& d) {
-  d.line_text(8, deco.name);
-  for (const auto& arg : deco.args) {
-    d.line_text(9, arg.name);
-    if (arg.value) {
-      dump_expr(*arg.value, d);
-    }
-  }
+  d.line_i_text_i(7, kind, "", 0);
 }
 
 void dump_block(const std::vector<Stmt>& body, Dumper& d) {
@@ -336,9 +304,6 @@ void dump_block(const std::vector<Stmt>& body, Dumper& d) {
 }
 
 void dump_stmt(const Stmt& s, Dumper& d) {
-  for (const auto& deco : s.decorators) {
-    dump_decorator(deco, d);
-  }
   switch (s.kind) {
     case Stmt::Kind::Return:
       d.line(40);
@@ -364,20 +329,11 @@ void dump_stmt(const Stmt& s, Dumper& d) {
       dump_block(s.while_body, d);
       break;
     case Stmt::Kind::For:
-      d.line_text_ii(43, s.for_iter, s.for_start, s.for_end);
-      for (const auto& c : s.for_contracts) {
-        dump_contract(c, d);
-      }
+      d.line_text_ii(43, s.for_index, s.for_start, s.for_end);
       dump_block(s.for_body, d);
       break;
     case Stmt::Kind::ParallelFor:
-      d.line_text_ii(44, s.par_iter, s.par_start, s.par_end);
-      for (const auto& c : s.par_contracts) {
-        dump_contract(c, d);
-      }
-      // The parallel-for body block is optional; the AST records only the
-      // parsed statements, so a missing `=`/block and an empty parsed block
-      // both dump as an empty block on both implementations.
+      d.line_text_ii(44, s.par_index, s.par_start, s.par_end);
       dump_block(s.par_body, d);
       break;
     case Stmt::Kind::Break:
@@ -422,19 +378,13 @@ void dump_param(const Param& p, Dumper& d) {
   dump_type(p.type, d);
 }
 
-/// Dump a proc with no body — used for trait methods (the C++ parser never
-/// parses a body for those).
-void dump_proc_no_body(const ProcDecl& proc, Dumper& d) {
-  d.line_text_iii(4, proc.name,
-                  proc.visibility == Visibility::Private ? 1 : 0,
-                  proc.is_extern ? 1 : 0, proc.is_async ? 1 : 0);
-  for (const auto& deco : proc.decorators) {
-    dump_decorator(deco, d);
-  }
+void dump_proc(const ProcDecl& proc, Dumper& d) {
+  d.line_text_iii(4, proc.name, 0, proc.is_extern ? 1 : 0, proc.is_async ? 1 : 0);
   for (std::size_t i = 0; i < proc.type_params.size(); ++i) {
-    const std::string bound =
-        i < proc.type_param_bounds.size() ? proc.type_param_bounds[i] : "";
-    d.line_text_text(5, proc.type_params[i], bound);
+    // This branch's lean parser records only the type-param names; the
+    // walker emits the bound text when a constrained param `T: Bound` is
+    // present, which the C++ parse drops. Emit name + empty bound.
+    d.line_text_text(5, proc.type_params[i], "");
   }
   for (const auto& p : proc.params) {
     dump_param(p, d);
@@ -448,27 +398,26 @@ void dump_proc_no_body(const ProcDecl& proc, Dumper& d) {
   for (const auto& c : proc.contracts) {
     dump_contract(c, d);
   }
-}
-
-void dump_proc(const ProcDecl& proc, Dumper& d) {
-  dump_proc_no_body(proc, d);
   if (!proc.is_extern) {
     dump_block(proc.body, d);
   }
 }
 
-void dump_theorem(const TheoremDecl& thm, Dumper& d) {
-  d.line_text_ii(3, thm.name, thm.is_axiom ? 1 : 0, thm.is_lemma ? 1 : 0);
-  for (const auto& p : thm.params) {
-    dump_param(p, d);
-  }
-  if (thm.proposition) {
-    dump_expr(*thm.proposition, d);
-  }
-}
-
 void dump_type_alias(const TypeAlias& alias, Dumper& d) {
-  d.line_text_i_text(80, alias.name, static_cast<int>(alias.alias_kind), alias.base_object);
+  // Walker kind numbers: 0 type definition, 1 typedict, 2 enum, 3 object,
+  // 4 trait. This branch's lean parser has no trait alias kind (it parses
+  // trait methods for acceptance only and records nothing), so only 0-3 can
+  // be emitted here.
+  int kind = 0;
+  switch (alias.alias_kind) {
+    case AliasKind::Type: kind = 0; break;
+    case AliasKind::TypedDict: kind = 1; break;
+    case AliasKind::Enum: kind = 2; break;
+    case AliasKind::Object: kind = 3; break;
+  }
+  // base_object: this branch's TypeAlias has no base-object field (the parser
+  // accepts `object of Base` and drops the base). Emit an empty base text.
+  d.line_text_i_text(80, alias.name, kind, "");
   for (const auto& tp : alias.type_params) {
     d.line_text_text(5, tp, "");
   }
@@ -476,8 +425,7 @@ void dump_type_alias(const TypeAlias& alias, Dumper& d) {
     case AliasKind::TypedDict:
     case AliasKind::Object:
       for (const auto& f : alias.fields) {
-        d.line_text_ii(27, f.name, f.optional ? 1 : 0,
-                       f.visibility == Visibility::Private ? 1 : 0);
+        d.line_text_ii(27, f.name, f.optional ? 1 : 0, f.public_field ? 0 : 1);
         if (f.type) {
           dump_type(*f.type, d);
         }
@@ -488,11 +436,6 @@ void dump_type_alias(const TypeAlias& alias, Dumper& d) {
         d.line_text(81, v);
       }
       break;
-    case AliasKind::Trait:
-      for (const auto& m : alias.trait_methods) {
-        dump_proc_no_body(m, d);
-      }
-      break;
     case AliasKind::Type:
       dump_type(alias.definition, d);
       break;
@@ -501,7 +444,7 @@ void dump_type_alias(const TypeAlias& alias, Dumper& d) {
 
 struct DeclRef {
   std::size_t start = 0;
-  int tag = 0;  // 0 import, 1 type alias, 2 error, 3 proc, 4 theorem
+  int tag = 0;  // 0 import, 1 type alias, 2 proc
   std::size_t idx = 0;
 };
 
@@ -516,14 +459,8 @@ std::string dump_module_ast(const Module& m, std::string_view source) {
   for (std::size_t i = 0; i < m.types.size(); ++i) {
     decls.push_back({m.types[i].span.start, 1, i});
   }
-  for (std::size_t i = 0; i < m.errors.size(); ++i) {
-    decls.push_back({m.errors[i].span.start, 2, i});
-  }
   for (std::size_t i = 0; i < m.procs.size(); ++i) {
-    decls.push_back({m.procs[i].span.start, 3, i});
-  }
-  for (std::size_t i = 0; i < m.theorems.size(); ++i) {
-    decls.push_back({m.theorems[i].span.start, 4, i});
+    decls.push_back({m.procs[i].span.start, 2, i});
   }
   std::stable_sort(decls.begin(), decls.end(),
                    [](const DeclRef& a, const DeclRef& b) { return a.start < b.start; });
@@ -531,22 +468,14 @@ std::string dump_module_ast(const Module& m, std::string_view source) {
     switch (ref.tag) {
       case 0: {
         const auto& imp = m.imports[ref.idx];
-        d.line_text_text(1, imp.module, imp.alias);
+        d.line_text_text(1, imp.module, imp.has_alias ? imp.alias : imp.module);
         break;
       }
       case 1:
         dump_type_alias(m.types[ref.idx], d);
         break;
-      case 2: {
-        const auto& err = m.errors[ref.idx];
-        d.line_text_text(2, err.name, err.message_template);
-        break;
-      }
-      case 3:
+      case 2:
         dump_proc(m.procs[ref.idx], d);
-        break;
-      case 4:
-        dump_theorem(m.theorems[ref.idx], d);
         break;
     }
   }

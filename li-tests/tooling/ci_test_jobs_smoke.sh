@@ -3,6 +3,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 # shellcheck source=../../scripts/lib/li-jobs.sh
 source "$ROOT/scripts/lib/li-jobs.sh"
+# GitHub Actions pre-sets CI=true, which makes li_test_jobs return the host
+# CPU count; unset it so the non-CI default (1) is asserted deterministically.
+unset CI
 [[ "$(li_test_jobs)" == "1" ]]
 export CI=true
 [[ "$(li_test_jobs)" -ge 1 ]]
