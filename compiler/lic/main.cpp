@@ -217,6 +217,54 @@ std::optional<std::string> resolve_import_path(const std::string& module,
       }
     }
   }
+
+  // 5. same-package self-import: walk up to the nearest li.toml and, when its
+  //    `name` (kebab/snake normalized) matches the module, resolve to the
+  //    package's own src/lib.li (mirrors find_package_toml + same_package_entry
+  //    in import_resolve.cpp, which the build/check paths don't link).
+  {
+    std::string dir = base_file;
+    const auto first_slash = dir.find_last_of('/');
+    if (first_slash != std::string::npos) {
+      dir = dir.substr(0, first_slash);
+    } else {
+      dir.clear();
+    }
+    for (int depth = 0; depth < 12 && !dir.empty(); ++depth) {
+      const std::string toml = dir + "/li.toml";
+      std::ifstream in(toml);
+      if (in) {
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        const std::string text = ss.str();
+        const std::size_t name_key = text.find("name");
+        if (name_key != std::string::npos) {
+          const std::size_t q1 = text.find('"', name_key);
+          const std::size_t q2 = q1 == std::string::npos ? std::string::npos : text.find('"', q1 + 1);
+          if (q1 != std::string::npos && q2 != std::string::npos) {
+            std::string pkg_name = text.substr(q1 + 1, q2 - q1 - 1);
+            for (char& c : pkg_name) {
+              if (c == '-') {
+                c = '_';
+              }
+            }
+            if (pkg_name == m) {
+              const std::string lib = dir + "/src/lib.li";
+              if (auto p = candidate(lib)) {
+                return p;
+              }
+            }
+          }
+        }
+        break;
+      }
+      const auto p = dir.find_last_of('/');
+      if (p == std::string::npos) {
+        break;
+      }
+      dir = dir.substr(0, p);
+    }
+  }
   return std::nullopt;
 }
 
