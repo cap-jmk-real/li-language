@@ -1,33 +1,25 @@
 #include "li/check_cmd.hpp"
-#include "li/workspace_check.hpp"
 
 #include "li/advisory.hpp"
 #include "li/check_cache.hpp"
-#include "li/resource_options.hpp"
 #include "li/check_config.hpp"
-#include "li/import_resolve.hpp"
+#include "li/frontend.hpp"
 #include "li/parser.hpp"
-#include "li/platform.hpp"
-#include "li/policy.hpp"
-#include "li/prelude.hpp"
-#include "li/typecheck.hpp"
+#include "li/resource_options.hpp"
+#include "li/workspace_check.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string>
 #include <string_view>
 
 namespace li {
 namespace {
 
 enum class DiagOutput { Human, Json };
-
-#ifdef LI_VERSION
-constexpr const char* kCompilerVersion = LI_VERSION;
-#else
-constexpr const char* kCompilerVersion = "dev";
-#endif
 
 std::string read_file(const char* path) {
   std::ifstream in(path);
@@ -36,19 +28,15 @@ std::string read_file(const char* path) {
   return ss.str();
 }
 
-void append_diagnostic(DiagnosticBag& out, const Diagnostic& d) {
-  const std::string hint = d.hint ? *d.hint : std::string{};
-  if (d.severity == DiagnosticSeverity::Error) {
-    if (!d.code.empty()) {
-      out.error(d.loc, d.code, d.message, hint);
-    } else {
-      out.error(d.loc, d.message);
-    }
-  } else if (d.severity == DiagnosticSeverity::Warning) {
-    out.warning(d.loc, d.code, d.message, hint);
+// Repo-relative build path (LI_REPO_ROOT/build/<rel>, fallback "build/<rel>").
+std::string repo_build_path(const char* relative) {
+  std::string prefix;
+  if (const char* root = std::getenv("LI_REPO_ROOT")) {
+    prefix = std::string(root) + "/build";
   } else {
-    out.note(d.loc, d.code, d.message, hint);
+    prefix = "build";
   }
+  return prefix + "/" + relative;
 }
 
 int check_exit_code(const DiagnosticBag& diags, bool deny_warnings) {
@@ -130,9 +118,8 @@ int check_file(const char* path, const CheckCommandOptions& opts, DiagOutput out
     }
   }
 
-  // Human-mode failures print diagnostics to stderr directly, so `cache_payload`
-  // is empty for them; caching would replay an empty (unhelpful) result on the
-  // next run. Only cache successes and JSON-mode results, which carry a payload.
+  // Human-mode failures print diagnostics to stdout directly, so `cache_payload`
+  // carries them; cache successes and JSON-mode results which replay identically.
   if (use_cache && (exit_code == 0 || output == DiagOutput::Json)) {
     store_check_cache(opts.cache, key, exit_code, cache_payload, content_hash);
   }
@@ -143,52 +130,25 @@ int check_file(const char* path, const CheckCommandOptions& opts, DiagOutput out
 
 bool run_frontend_check(const char* path, const std::string& source, Module& out,
                         DiagnosticBag& diags, const FrontendCheckOptions& options) {
-  const CheckConfig cfg = load_check_config(path);
-  const AdvisoryOptions advisory_opts{cfg};
-
-  check_source_policies(source, path, cfg, diags);
-  if (diags.has_errors()) {
+  if (!frontend(path, source, out, diags)) {
+    // Surface advisory warnings/notes even when the typecheck verdict rejects,
+    // matching the pre-squash ordering (advisory passes ran before the
+    // typecheck result was consulted). The rejected module is reparsed here;
+    // errors from frontend() are already in `diags`.
+    auto parsed = parse_module(source, path);
+    if (parsed.module) {
+      run_advisory_passes(*parsed.module, path, diags);
+    }
     return false;
   }
-
-  auto parsed = parse_module(source, path);
-  for (const auto& d : parsed.diagnostics.items()) {
-    append_diagnostic(diags, d);
-  }
-  if (!parsed.module) {
-    return false;
-  }
-
-  check_stdlib_seal(*parsed.module, path, diags);
-  if (diags.has_errors()) {
-    return false;
-  }
-  if (!resolve_imports(*parsed.module, path, diags)) {
-    return false;
-  }
-  check_module_policies(*parsed.module, path, diags);
-  if (diags.has_errors()) {
-    return false;
-  }
-  check_duplicate_definitions(*parsed.module, path, diags);
-  if (diags.has_errors()) {
-    return false;
-  }
-
-  run_advisory_passes(*parsed.module, path, advisory_opts, diags);
-  auto checked = typecheck_module(*parsed.module, parsed.module->procs.size());
-  for (const auto& d : checked.diagnostics.items()) {
-    append_diagnostic(diags, d);
-  }
-  if (!checked.ok) {
-    return false;
-  }
+  // Advisory passes run on the accepted module: warnings/notes never change
+  // the verdict by themselves (only --deny-warnings escalates warnings).
+  run_advisory_passes(out, path, diags);
   if (options.deny_warnings && diags.has_warnings()) {
     SourceLoc loc{path, 1, 1, 0};
     diags.error(loc, "warnings denied by --deny-warnings");
     return false;
   }
-  out = std::move(*parsed.module);
   return true;
 }
 

@@ -1,6 +1,8 @@
 add_subdirectory(diagnostics)
 add_subdirectory(common)
 add_subdirectory(config)
+add_subdirectory(analyze)
+add_subdirectory(cache)
 add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(ast)
