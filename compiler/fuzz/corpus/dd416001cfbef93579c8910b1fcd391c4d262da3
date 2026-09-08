@@ -1,0 +1,8 @@
+proc p() -> int
+  requires true
+  enuc p() -> int
+  requ int
+  requires res true
+  decreases 0
+=
+  return 0
