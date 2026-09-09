@@ -79,6 +79,12 @@ void merge_imported(Module& to, Module&& from) {
     to.types.push_back(std::move(t));
   }
   for (auto& p : from.procs) {
+    // `private def` procs are invisible to importing modules (the walker
+    // records ep_priv and never surfaces them in import scope), so calls to
+    // them from an importer fail with an unknown-proc verdict.
+    if (p.is_private) {
+      continue;
+    }
     to.procs.push_back(std::move(p));
   }
 }

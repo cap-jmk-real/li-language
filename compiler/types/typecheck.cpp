@@ -208,6 +208,7 @@ struct AliasEntry {
   const std::vector<TypeField>* fields = nullptr;
   const std::vector<std::string>* enum_variants = nullptr;
   bool is_protocol = false;
+  const std::string* base_name = nullptr;
 };
 
 struct Ctx {
@@ -359,6 +360,30 @@ struct Ctx {
     auto t = std::make_shared<Ty>();
     t->kind = TyKind::TypedDict;
     t->name = name;
+    // `object of Base` (walker ec field_base): the derived object exposes the
+    // base's fields first, then its own — structural subtype for
+    // assignability. A field the derived re-declares shadows the base's (the
+    // walker keeps only the derived declaration, e.g. `legs: float` on a
+    // `legs: int` base yields one float leaf).
+    const auto bit = aliases.find(name);
+    if (bit != aliases.end() && bit->second.base_name &&
+        bit->second.base_name->empty() == false) {
+      const auto base = aliases.find(*bit->second.base_name);
+      if (base != aliases.end() && base->second.fields) {
+        for (const auto& field : *base->second.fields) {
+          if (!field.type) {
+            continue;
+          }
+          const bool shadowed = std::any_of(
+              fields.begin(), fields.end(),
+              [&](const TypeField& own) { return own.name == field.name; });
+          if (shadowed) {
+            continue;
+          }
+          t->fields.emplace_back(field.name, resolve_type_expr(*field.type));
+        }
+      }
+    }
     for (const auto& field : fields) {
       if (!field.type) {
         continue;
@@ -415,6 +440,27 @@ struct Ctx {
       return true;
     }
     if (is_float_family(value->kind) && is_float_family(expected->kind)) {
+      return true;
+    }
+    // Structural object subtype (object-of inheritance): a value whose
+    // object exposes every expected field with a matching type satisfies the
+    // expected object, mirroring the walker's ec field lookup on the base.
+    if (value->kind == TyKind::TypedDict && expected->kind == TyKind::TypedDict) {
+      for (const auto& ef : expected->fields) {
+        bool found = false;
+        for (const auto& vf : value->fields) {
+          if (vf.first == ef.first) {
+            found = true;
+            if (!same_kind(vf.second, ef.second)) {
+              return false;
+            }
+            break;
+          }
+        }
+        if (!found) {
+          return false;
+        }
+      }
       return true;
     }
     return same_kind(value, expected);
@@ -748,6 +794,14 @@ struct Ctx {
           }
           return make_float();
         }
+        // `print` is a walker special case (tc_primary accepts it before the
+        // proc table lookup), so any arg list is legal here too.
+        if (e.ident == "print") {
+          for (const auto& arg : e.args) {
+            (void)type_of(*arg);
+          }
+          return make_int();
+        }
         const auto pit = procs.find(e.ident);
         if (pit != procs.end()) {
           const ProcDecl& callee = *pit->second;
@@ -766,6 +820,9 @@ struct Ctx {
         for (const auto& arg : e.args) {
           (void)type_of(*arg);
         }
+        // Unknown proc: E0202 in the walker (a call to a name outside the
+        // symbol table, incl. private procs that imports never surface).
+        diags.error(loc(e.span), "unknown proc '" + e.ident + "'");
         return make_int();
       }
       case Expr::Kind::UnaryNot:
@@ -817,6 +874,30 @@ struct Ctx {
           }
         }
         diags.error(loc(e.span), "unknown field '" + fname + "'");
+        return make_int();
+      }
+      case Expr::Kind::MethodCall: {
+        if (e.base) {
+          (void)type_of(*e.base);
+        }
+        for (const auto& a : e.args) {
+          (void)type_of(*a);
+        }
+        // `obj.method(args)` resolves to the name-mangled `<Type>_<method>`
+        // proc (walker pl_obj_has_method). On a known object type a missing
+        // method is E0202; on non-object/unknown receivers the walker is lax.
+        const TyPtr base = e.base ? type_of(*e.base) : make_int();
+        if (base->kind == TyKind::TypedDict && !base->name.empty()) {
+          const std::string mangled = base->name + "_" + e.ident;
+          const auto pit = procs.find(mangled);
+          if (pit == procs.end()) {
+            diags.error(loc(e.span), "unknown method '" + e.ident + "'");
+            return make_int();
+          }
+          if (pit->second->ret_type) {
+            return resolve_type_expr(*pit->second->ret_type);
+          }
+        }
         return make_int();
       }
     }
@@ -1034,6 +1115,9 @@ TypecheckResult typecheck_module(const Module& module, std::size_t main_proc_cou
     entry.is_protocol =
         alias.alias_kind == AliasKind::Type && alias.definition.kind == TypeKind::Named &&
         alias.definition.name == "Protocol";
+    if (!alias.base.empty()) {
+      entry.base_name = &alias.base;
+    }
     ctx.aliases[alias.name] = std::move(entry);
   }
   // Only the main module's own proc bodies are checked. Imported procs are

@@ -167,6 +167,17 @@ void dump_expr(const Expr& e, Dumper& d) {
         dump_expr(*a, d);
       }
       break;
+    case Expr::Kind::MethodCall:
+      // `obj.method(args)`: base subtree, then the code-70 line naming the
+      // method, then the argument subtrees (walker parse_postfix mcall).
+      if (e.base) {
+        dump_expr(*e.base, d);
+      }
+      d.line_text(70, e.ident);
+      for (const auto& a : e.args) {
+        dump_expr(*a, d);
+      }
+      break;
     case Expr::Kind::BinOp:
       dump_expr(*e.lhs, d);
       d.line_i(65, binop_token_kind(e.bin_op));

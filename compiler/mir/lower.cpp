@@ -323,10 +323,67 @@ std::string obj_field_slot_chain(const Expr& e) {
   return "";
 }
 
+// Deep-copy an expression tree (used to re-shape a MethodCall into the
+// equivalent plain Call so the shared call lowering applies unchanged).
+std::unique_ptr<Expr> clone_expr(const Expr& e) {
+  auto out = std::make_unique<Expr>();
+  out->kind = e.kind;
+  out->span = e.span;
+  out->int_value = e.int_value;
+  out->float_value = e.float_value;
+  out->is_binary = e.is_binary;
+  out->ident = e.ident;
+  out->str_value = e.str_value;
+  out->bin_op = e.bin_op;
+  if (e.lhs) {
+    out->lhs = clone_expr(*e.lhs);
+  }
+  if (e.rhs) {
+    out->rhs = clone_expr(*e.rhs);
+  }
+  if (e.operand) {
+    out->operand = clone_expr(*e.operand);
+  }
+  if (e.base) {
+    out->base = clone_expr(*e.base);
+  }
+  if (e.index) {
+    out->index = clone_expr(*e.index);
+  }
+  for (const auto& a : e.args) {
+    if (a) {
+      out->args.push_back(clone_expr(*a));
+    } else {
+      out->args.push_back(nullptr);
+    }
+  }
+  return out;
+}
+
 std::string lower_expr_to(const Expr& e, const Module& module, std::vector<MirInsn>& out,
                           std::unordered_set<std::string>& float_names,
                           std::unordered_set<std::string>& float_arrays) {
   switch (e.kind) {
+    case Expr::Kind::MethodCall: {
+      // `obj.method(args)` lowers as a call to the name-mangled
+      // `<Type>_method` proc with the receiver as the first argument
+      // (walker mir_method_pid). The shared Call lowering then applies the
+      // same var-object first-arg wb write-back recipe as for plain calls.
+      if (e.base && e.base->kind == Expr::Kind::Ident) {
+        const auto vit = g_object_vars.find(e.base->ident);
+        if (vit != g_object_vars.end()) {
+          Expr call;
+          call.kind = Expr::Kind::Call;
+          call.ident = vit->second + "_" + e.ident;
+          call.args.push_back(clone_expr(*e.base));
+          for (const auto& a : e.args) {
+            call.args.push_back(clone_expr(*a));
+          }
+          return lower_expr_to(call, module, out, float_names, float_arrays);
+        }
+      }
+      return "";
+    }
     case Expr::Kind::IntLit: {
       const std::string dest = fresh_temp();
       MirInsn ins;
@@ -2231,11 +2288,38 @@ MirModule lower_to_mir(const Module& module) {
     }
   }
   std::function<void(const TypeAlias&, const std::string&, std::vector<std::string>&,
-                     std::vector<ObjectField>&)>
+                     std::vector<ObjectField>&, const std::vector<std::string>*)>
       flatten_alias = [&](const TypeAlias& alias, const std::string& prefix,
-                          std::vector<std::string>& path,
-                          std::vector<ObjectField>& out) {
+                          std::vector<std::string>& path, std::vector<ObjectField>& out,
+                          const std::vector<std::string>* shadow) {
+        // `object of Base`: the derived object's leaf layout includes the
+        // base's leaves first (walker ec field_base chains the base's
+        // fields), so a Dog exposes Animal's legs before its own barks. A
+        // field the derived re-declares shadows the base's (the walker keeps
+        // only the derived declaration, e.g. `legs: float` on a `legs: int`
+        // base yields one float leaf).
+        if (!alias.base.empty()) {
+          const auto base = obj_aliases.find(alias.base);
+          if (base != obj_aliases.end() &&
+              std::find(path.begin(), path.end(), alias.base) == path.end()) {
+            // A base field is shadowed by the derived chain's declarations:
+            // this alias's own names join the shadow set going up.
+            std::vector<std::string> up = shadow ? *shadow : std::vector<std::string>{};
+            for (const auto& f : alias.fields) {
+              up.push_back(f.name);
+            }
+            path.push_back(alias.base);
+            flatten_alias(*base->second, prefix, path, out, &up);
+            path.pop_back();
+          }
+        }
         for (const auto& f : alias.fields) {
+          // Skip a field shadowed by a derived re-declaration (checked at
+          // the base level; the derived's own pass emits its declaration).
+          if (shadow != nullptr &&
+              std::find(shadow->begin(), shadow->end(), f.name) != shadow->end()) {
+            continue;
+          }
           if (f.type && f.type->kind == TypeKind::Named) {
             const auto sub = obj_aliases.find(f.type->name);
             if (sub != obj_aliases.end() &&
@@ -2243,7 +2327,7 @@ MirModule lower_to_mir(const Module& module) {
               const std::string next =
                   prefix.empty() ? f.name : prefix + "_" + f.name;
               path.push_back(f.type->name);
-              flatten_alias(*sub->second, next, path, out);
+              flatten_alias(*sub->second, next, path, out, shadow);
               path.pop_back();
               continue;
             }
@@ -2265,7 +2349,9 @@ MirModule lower_to_mir(const Module& module) {
     if (alias.alias_kind == AliasKind::Object) {
       std::vector<ObjectField> fields;
       std::vector<std::string> path{alias.name};
-      flatten_alias(alias, "", path, fields);
+      // Top-level: nothing shadows the object's own declarations; the base
+      // recursion (inside flatten_alias) carries the derived chain's names.
+      flatten_alias(alias, "", path, fields, nullptr);
       g_object_types[alias.name] = std::move(fields);
     }
   }

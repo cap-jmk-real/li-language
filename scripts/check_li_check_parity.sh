@@ -46,6 +46,14 @@ CORPUS_OK=(
   "li-tests/typecheck/literal_suffix_ok.li"
   "li-tests/typecheck/binary_literal_ok.li"
   "li-tests/generics/precision_real_alias.li"
+  "li-tests/encapsulation/def_method_parse.li"
+  "li-tests/encapsulation/def_method_call.li"
+  "li-tests/encapsulation/object_method_mutate.li"
+  "li-tests/encapsulation/inheritance_subtype.li"
+  "li-tests/encapsulation/private_method_lib.li"
+  "li-tests/contracts_verify/method_call_requires_ok.li"
+  "li-tests/contracts_verify/method_call_requires_fail.li"
+  "li-tests/contracts_verify/method_ensures_return_ok.li"
 )
 
 # Corpus: files both sides must reject. Entries are `file:EXXXX` when a
@@ -58,6 +66,8 @@ CORPUS_FAIL=(
   "li-tests/typecheck/probe_alias.li:E0303"
   "li-tests/typecheck/probe_arrret.li:E0303"
   "li-tests/typecheck/scalar_width_mix_fail.li:-"
+  "li-tests/encapsulation/def_method_missing.li:-"
+  "li-tests/encapsulation/private_method_use.li:-"
 )
 
 checked=0
