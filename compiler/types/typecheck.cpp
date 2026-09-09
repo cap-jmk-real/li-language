@@ -93,18 +93,52 @@ bool is_unit_type(const TypeExpr& type) {
   return type.kind == TypeKind::Named && type.name == "unit";
 }
 
-const Expr* direct_return_expr(const ProcDecl& proc) {
-  const Expr* result = nullptr;
-  for (const auto& stmt : proc.body) {
-    if (stmt.kind != Stmt::Kind::Return || !stmt.expr) {
-      continue;
+// Count return statements reachable anywhere in the proc body (including
+// inside if/while/for bodies). The literal-return postcondition check is only
+// sound when the proc has exactly one return, so any second return anywhere
+// disables it: with control flow the postcondition cannot be judged against a
+// single literal return (e.g. `if c: return 0\nreturn 1` under
+// `ensures result == 0` is fine when the second return is dead on every path
+// the checker can see, as in li-tests/compile_ok/int_ne_literal.li).
+static std::size_t count_returns(const std::vector<Stmt>& body) {
+  std::size_t n = 0;
+  for (const auto& stmt : body) {
+    switch (stmt.kind) {
+      case Stmt::Kind::Return:
+        ++n;
+        break;
+      case Stmt::Kind::If:
+        n += count_returns(stmt.then_body);
+        if (stmt.else_body) {
+          n += count_returns(*stmt.else_body);
+        }
+        break;
+      case Stmt::Kind::While:
+        n += count_returns(stmt.while_body);
+        break;
+      case Stmt::Kind::For:
+        n += count_returns(stmt.for_body);
+        break;
+      case Stmt::Kind::ParallelFor:
+        n += count_returns(stmt.par_body);
+        break;
+      default:
+        break;
     }
-    if (result != nullptr) {
-      return nullptr;
-    }
-    result = stmt.expr.get();
   }
-  return result;
+  return n;
+}
+
+const Expr* direct_return_expr(const ProcDecl& proc) {
+  if (count_returns(proc.body) != 1) {
+    return nullptr;
+  }
+  for (const auto& stmt : proc.body) {
+    if (stmt.kind == Stmt::Kind::Return && stmt.expr) {
+      return stmt.expr.get();
+    }
+  }
+  return nullptr;
 }
 
 std::optional<long double> literal_number(const Expr& e) {

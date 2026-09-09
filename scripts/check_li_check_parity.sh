@@ -133,6 +133,7 @@ CORPUS_OK=(
   "li-tests/proof_gaps/false_ensures_still_builds.li"
   "li-tests/runtime/argv_ptr_abi.li"
   "li-tests/runtime/unary_minus.li"
+  "li-tests/compile_ok/int_ne_literal.li"
 )
 
 # Corpus: files both sides must reject. Entries are `file:EXXXX` when a
@@ -158,6 +159,9 @@ CORPUS_FAIL=(
   "li-tests/advisory/unreachable_after_return.li:-"
   "li-tests/bytes/reader_writer_smoke.li:-"
   "li-tests/compile_ok/volatile_sink_no_io.li:-"
+  "li-tests/contracts_verify/caller_requires_fail.li:E0304"
+  "li-tests/math_linalg/elementwise_len_mismatch.li:-"
+  "li-tests/modules/import_cycle_b.li:-"
   "li-tests/encapsulation/extern_proc_syntax_rejected.li:-"
   "li-tests/encapsulation/proc_syntax_rejected.li:-"
   "li-tests/lexer_parser/decorators_parse.li:-"
