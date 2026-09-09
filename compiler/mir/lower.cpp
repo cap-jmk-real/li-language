@@ -1609,24 +1609,30 @@ void lower_stmt(const Stmt& stmt, const Module& module, bool returns_float, bool
       break;
     }
     case Stmt::Kind::Assign:
-      // `o.field[i] = value` uses the flattened array field slot.
+      // `o.field[i] = value` (and nested `o.sub.field[i] = value`) uses the
+      // flattened array-field slot __li_o_<chain> (walker mir_assign
+      // field-array store). g_object_types flattens nested object fields into
+      // compound leaf names (tier_vals), so the chain minus its root names the
+      // leaf; chains root at an object var, call-result bases are rejected by
+      // find_nested_field_assign.
       if (stmt.init && stmt.init->kind == Expr::Kind::Index && stmt.init->base &&
-          stmt.init->base->kind == Expr::Kind::Field && stmt.expr &&
-          stmt.init->base->base && stmt.init->base->base->kind == Expr::Kind::Ident &&
-          stmt.init->base->index && stmt.init->base->index->kind == Expr::Kind::Ident) {
-        const std::string base = stmt.init->base->base->ident;
-        const std::string field = stmt.init->base->index->ident;
-        const auto owner = g_object_vars.find(base);
-        if (owner != g_object_vars.end()) {
-          const auto fields = g_object_types.find(owner->second);
-          if (fields != g_object_types.end()) {
-            for (const auto& f : fields->second) {
-              if (f.name != field || f.array_elems <= 0) {
-                continue;
-              }
-              MirInsn ins;
-              ins.op = f.is_float ? MirOp::ArrayStoreFloat : MirOp::ArrayStoreInt;
-              ins.ident = "__li_o_" + base + "_" + field;
+          stmt.init->base->kind == Expr::Kind::Field && stmt.expr) {
+        const std::string chain = obj_field_slot_chain(*stmt.init->base);
+        const std::size_t dot = chain.find('_');
+        if (!chain.empty() && dot != std::string::npos) {
+          const std::string root = chain.substr(0, dot);
+          const std::string leaf = chain.substr(dot + 1);
+          const auto owner = g_object_vars.find(root);
+          if (owner != g_object_vars.end()) {
+            const auto fields = g_object_types.find(owner->second);
+            if (fields != g_object_types.end()) {
+              for (const auto& f : fields->second) {
+                if (f.name != leaf || f.array_elems <= 0) {
+                  continue;
+                }
+                MirInsn ins;
+                ins.op = f.is_float ? MirOp::ArrayStoreFloat : MirOp::ArrayStoreInt;
+                ins.ident = "__li_o_" + chain;
               if (stmt.init->index->kind == Expr::Kind::IntLit) {
                 ins.index_is_literal = true;
                 ins.int_value = stmt.init->index->int_value;
@@ -1656,6 +1662,7 @@ void lower_stmt(const Stmt& stmt, const Module& module, bool returns_float, bool
               break;
             }
           }
+        }
         }
         break;
       }
@@ -2289,14 +2296,37 @@ void scan_runtime_flags(const Module& module, MirModule& mir) {
 // `o.s.t = t`, `make().fps = 2.0`): its lowerer errors on the store. The
 // C++ host used to accept these and silently drop the store (a wrong binary
 // with no diagnostic). Reject at the same lowering stage with a real message.
-// Index-base targets (`o.t.a[0] = 1`) and one-hop field targets (`d.tier = t`)
-// are supported on both sides and stay accepted.
+// Index-base targets whose field chain roots at an object var (`o.t.a[0] = 1`,
+// `o.a[0] = 1`) are supported on both sides and stay accepted; Index targets
+// rooted in a call result (`make().a[0] = 1`) have no live leaf slot on
+// either side and are rejected too.
+// Deepest component of a Field chain: an Ident when the access roots at a
+// var, anything else (Call result, ...) otherwise. Shape-only, so the check
+// below works before g_object_vars is seeded.
+static const Expr* field_chain_root(const Expr* e) {
+  if (!e) {
+    return nullptr;
+  }
+  if (e->kind == Expr::Kind::Field && e->base) {
+    return field_chain_root(e->base.get());
+  }
+  return e;
+}
+
 static bool find_nested_field_assign(const std::vector<Stmt>& stmts) {
   for (const auto& s : stmts) {
-    if (s.kind == Stmt::Kind::Assign && s.init && s.expr &&
-        s.init->kind == Expr::Kind::Field && s.init->base &&
-        s.init->base->kind != Expr::Kind::Ident) {
-      return true;
+    if (s.kind == Stmt::Kind::Assign && s.init && s.expr) {
+      if (s.init->kind == Expr::Kind::Field && s.init->base &&
+          s.init->base->kind != Expr::Kind::Ident) {
+        return true;
+      }
+      if (s.init->kind == Expr::Kind::Index && s.init->base &&
+          s.init->base->kind == Expr::Kind::Field) {
+        const Expr* root = field_chain_root(s.init->base.get());
+        if (!root || root->kind != Expr::Kind::Ident) {
+          return true;
+        }
+      }
     }
     switch (s.kind) {
       case Stmt::Kind::If:

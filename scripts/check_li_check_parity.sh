@@ -135,6 +135,7 @@ CORPUS_OK=(
   "li-tests/runtime/unary_minus.li"
   "li-tests/compile_ok/int_ne_literal.li"
   "li-tests/objects/nested_field_write.li"
+  "li-tests/objects/nested_index_write.li"
 )
 
 # Corpus: files both sides must reject. Entries are `file:EXXXX` when a

@@ -63,6 +63,7 @@ CORPUS=(
   "packages/lig/li-tests/smoke/kernel_matmul_parity.li"
   "li-tests/objects/object_field_smoke.li"
   "li-tests/objects/object_copy_init.li"
+  "li-tests/objects/nested_index_write.li"
   "li-tests/contracts_verify/http_parse_forward_closed.li"
 )
 
