@@ -75,6 +75,28 @@ fail() {
 "$LIC" build "$ROOT/bootstrap/lic/main.li" -o "$LI" --allow-open-vc --no-lean-verify \
   >/dev/null 2>&1 || fail "could not build bootstrap/lic/main.li with $LIC"
 
+# Files both sides must REJECT at `lic mir`. Nested object-path assignment
+# targets (`o.t.a = v` through a multi-hop field path) error in the walker's
+# lowerer and now reject in C++ with a diagnostic, so neither side silently
+# miscompiles (C++ previously dropped the store).
+REJECT_CORPUS=(
+  "li-tests/objects/nested_field_write.li"
+)
+
+for f in "${REJECT_CORPUS[@]}"; do
+  src="$ROOT/$f"
+  [[ -f "$src" ]] || fail "reject corpus file missing: $f"
+  cpp_rc=0; li_rc=0
+  "$LIC" mir "$src" >/dev/null 2>&1 || cpp_rc=$?
+  "$LI"  mir "$src" >/dev/null 2>&1 || li_rc=$?
+  if [[ "$cpp_rc" != "0" && "$li_rc" != "0" ]]; then
+    echo "  rej  $f (both reject)"
+  else
+    echo "  FAIL $f  C++=$cpp_rc Li=$li_rc (expected both reject)" >&2
+    fail "MIR reject corpus: $f must reject on both sides"
+  fi
+done
+
 checked=0
 for f in "${CORPUS[@]}"; do
   src="$ROOT/$f"
@@ -148,4 +170,4 @@ if [[ "${LI_MIR_FULL_SWEEP:-0}" == "1" ]]; then
     | tee "$OUT/summary.txt"
 fi
 
-echo "check_li_mir_parity: ok (${#CORPUS[@]} corpus files, byte-exact MIR dumps)"
+echo "check_li_mir_parity: ok (${#CORPUS[@]} corpus files, byte-exact MIR dumps; ${#REJECT_CORPUS[@]} reject files, both reject)"

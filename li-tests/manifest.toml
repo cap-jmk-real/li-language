@@ -627,6 +627,12 @@ suite = "objects"
 file = "objects/object_whole_assign.li"
 outcome = "verify_ok"
 
+[[tests]]
+suite = "objects"
+file = "objects/nested_field_write.li"
+outcome = "compile_fail"
+expected_substr = "nested object-path"
+
 # --- integration (bootstrap / self-host seed) ---
 
 [[tests]]

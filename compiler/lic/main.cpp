@@ -134,7 +134,12 @@ int verify_file(const char* path, bool run_lean) {
     li::print_diagnostics(diags);
     return 1;
   }
-  const li::MirModule mir = li::lower_to_mir(module);
+  std::string mir_err;
+  const li::MirModule mir = li::lower_to_mir(module, &mir_err);
+  if (!mir_err.empty()) {
+    std::cerr << "verify: " << mir_err << '\n';
+    return 1;
+  }
   const li::VcSummary vc = li::summarize_vcs(module);
   const li::VcWitnessStats ws = li::compute_vc_witness_stats(module, &mir);
   std::cout << "verify: procs=" << vc.proc_count << " mir_fns=" << mir.functions.size()
@@ -494,7 +499,12 @@ int main(int argc, char** argv) {
     // Imports (types and procs) were already merged into the module by
     // frontend(), in walker order: main procs first, then each import's procs
     // recursively, dedup by canonical path. Lower the merged module directly.
-    auto mir = li::lower_to_mir(module);
+    std::string mir_err;
+    auto mir = li::lower_to_mir(module, &mir_err);
+    if (!mir_err.empty()) {
+      std::cerr << "mir: " << mir_err << '\n';
+      return 1;
+    }
     std::cout << li::dump_mir_module(mir);
     return 0;
   }

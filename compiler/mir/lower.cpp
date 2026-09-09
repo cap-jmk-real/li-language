@@ -2284,7 +2284,50 @@ void scan_runtime_flags(const Module& module, MirModule& mir) {
   }
 }
 
-MirModule lower_to_mir(const Module& module) {
+// The walker's MIR rejects assignments whose LHS is a field through a
+// multi-hop object path (base is itself a Field — `d.tier.tier_id = 7`,
+// `o.s.t = t`, `make().fps = 2.0`): its lowerer errors on the store. The
+// C++ host used to accept these and silently drop the store (a wrong binary
+// with no diagnostic). Reject at the same lowering stage with a real message.
+// Index-base targets (`o.t.a[0] = 1`) and one-hop field targets (`d.tier = t`)
+// are supported on both sides and stay accepted.
+static bool find_nested_field_assign(const std::vector<Stmt>& stmts) {
+  for (const auto& s : stmts) {
+    if (s.kind == Stmt::Kind::Assign && s.init && s.expr &&
+        s.init->kind == Expr::Kind::Field && s.init->base &&
+        s.init->base->kind != Expr::Kind::Ident) {
+      return true;
+    }
+    switch (s.kind) {
+      case Stmt::Kind::If:
+        if (find_nested_field_assign(s.then_body) ||
+            (s.else_body && find_nested_field_assign(*s.else_body))) {
+          return true;
+        }
+        break;
+      case Stmt::Kind::While:
+        if (find_nested_field_assign(s.while_body)) {
+          return true;
+        }
+        break;
+      case Stmt::Kind::For:
+        if (find_nested_field_assign(s.for_body)) {
+          return true;
+        }
+        break;
+      case Stmt::Kind::ParallelFor:
+        if (find_nested_field_assign(s.par_body)) {
+          return true;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
+MirModule lower_to_mir(const Module& module, std::string* err) {
   temp_counter = 0;
   g_par_counter = 0;
   g_uses_openmp = false;
@@ -2375,6 +2418,13 @@ MirModule lower_to_mir(const Module& module) {
   }
   scan_runtime_flags(module, mir);
   for (const auto& proc : module.procs) {
+    if (find_nested_field_assign(proc.body)) {
+      if (err) {
+        *err = "nested object-path assignment target in '" + proc.name +
+               "' (e.g. `o.a.b = v`): the li walker's MIR rejects this shape";
+      }
+      return MirModule{};
+    }
     MirFn fn;
     fn.name = proc.name;
     fn.is_extern = proc.is_extern;
