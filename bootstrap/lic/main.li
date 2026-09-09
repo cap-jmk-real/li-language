@@ -7992,8 +7992,23 @@ def mir_parse_primary(darena: var array[65536, int],  dasp: var array[1, int], s
     var rec2: int = d_alloc(darena,  dasp,  1,  li_rt_mir_f64(src,  peek_tk(ts, t2 + 0),  peek_tk(te, t2 + 0)), peek_tk(ts, t2 + 0),  peek_tk(te, t2 + 0))
     return mir_parse_postfix(darena,  dasp,  src,  tk,  ts,  te,  n,  pi,  err,  rec2)
   if k == 7:
+    # Binary literal `0b10110100`: value is the base-2 interpretation of the
+    # bits (span covers the full literal incl. the `0b` prefix, like C++).
+    # Descriptor kind 0 (int literal) so mir_return/mir_lower_expr treat it
+    # as a literal const, not a temp name. The span cells are 0 so the
+    # StoreInt path prints the computed value (mir_ins_line f[27]) instead of
+    # re-deriving it from the source span as decimal (which would mis-read
+    # the bits, e.g. 0b10110100 -> 10110100); the return path prints rec+1
+    # directly either way.
+    var t3: int = pi[0]
     pi[0] = pi[0] + 1
-    var rec3: int = d_alloc(darena,  dasp,  10,  0,  0,  0)
+    var bv: int = 0
+    var bp: int = peek_tk(ts, t3 + 0) + 2
+    var be: int = peek_tk(te, t3 + 0)
+    while bp < be:
+      bv = bv * 2 + (li_rt_str_char_at(src, bp) - 48)
+      bp = bp + 1
+    var rec3: int = d_alloc(darena,  dasp,  0,  bv,  0,  0)
     return mir_parse_postfix(darena,  dasp,  src,  tk,  ts,  te,  n,  pi,  err,  rec3)
   if k == 4 or k == 46 or k == 35 or k == 36:
     var t4: int = pi[0]
