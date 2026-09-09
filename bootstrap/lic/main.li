@@ -4366,17 +4366,17 @@ def bk_mark_moved(src: var ptr, ts: var array[262144, int], te: var array[262144
     k = k + 1
   return 0
 
-def bk_check_expr(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], min_prec: int, bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_n: var array[1, int]) -> int
+def bk_check_expr(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], min_prec: int, bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_n: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
   requires true
   ensures result == 0 or result == 1
   decreases 0
 =
   if cur_kind(tk, n, pi, err) == 39:
     pi[0] = pi[0] + 1
-    return bk_check_expr(src, tk, ts, te, n, pi, err, 100, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+    return bk_check_expr(src, tk, ts, te, n, pi, err, 100, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
   if cur_kind(tk, n, pi, err) == 60:
     pi[0] = pi[0] + 1
-  if bk_check_primary(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+  if bk_check_primary(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
     return 0
   while 1 == 1:
     var p: int = prec_of(cur_kind(tk, n, pi, err))
@@ -4385,11 +4385,11 @@ def bk_check_expr(src: var ptr, tk: var array[262144, int], ts: var array[262144
     if p < min_prec:
       break
     pi[0] = pi[0] + 1
-    if bk_check_expr(src, tk, ts, te, n, pi, err, p + 1, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+    if bk_check_expr(src, tk, ts, te, n, pi, err, p + 1, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
       return 0
   return 1
 
-def bk_check_primary(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_n: var array[1, int]) -> int
+def bk_check_primary(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_n: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
   requires true
   ensures result == 0 or result == 1
   decreases 0
@@ -4397,26 +4397,31 @@ def bk_check_primary(src: var ptr, tk: var array[262144, int], ts: var array[262
   var k: int = cur_kind(tk, n, pi, err)
   if k == 34:
     pi[0] = pi[0] + 1
-    if bk_check_primary(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+    if bk_check_primary(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
       return 0
-    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
   if k == 8 or k == 5 or k == 6 or k == 7:
     pi[0] = pi[0] + 1
-    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
   if k == 4 or k == 46 or k == 35 or k == 36:
     var t4: int = pi[0]
     pi[0] = pi[0] + 1
     if accept_k(tk, n, pi, err, 49) == 1:
+      var arg_toks: array[16, int]
+      var argc: int = 0
       if cur_kind(tk, n, pi, err) != 50:
         var j: int = 0
         var done: int = 0
         while done == 0:
           var arg_plain: int = 0
           var arg_tok: int = pi[0]
+          if argc < 16:
+            arg_toks[argc] = arg_tok
+            argc = argc + 1
           if cur_kind(tk, n, pi, err) == 4:
             if peek_off(tk, n, pi, 1) == 55 or peek_off(tk, n, pi, 1) == 50:
               arg_plain = 1
-          if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+          if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
             return 0
           if arg_plain == 1:
             var pidx: int = bk_proc_index(src, ts, te, bp_name, bp_cnt, t4)
@@ -4429,18 +4434,19 @@ def bk_check_primary(src: var ptr, tk: var array[262144, int], ts: var array[262
           else:
             done = 1
       expect_k(tk, n, pi, err, 50)
+      rq_check_call(src, tk, ts, te, n, pi, err, t4, arg_toks, argc, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
     else:
       bk_check_use(src, ts, te, ls_name, ls_moved, ls_mb, ls_n, t4, err)
-    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
   if accept_k(tk, n, pi, err, 49) == 1:
-    if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+    if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
       return 0
     expect_k(tk, n, pi, err, 50)
-    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+    return bk_check_postfix(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
   err[0] = 1
   return 0
 
-def bk_check_postfix(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_n: var array[1, int]) -> int
+def bk_check_postfix(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_n: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
   requires true
   ensures result == 0 or result == 1
   decreases 0
@@ -4450,28 +4456,36 @@ def bk_check_postfix(src: var ptr, tk: var array[262144, int], ts: var array[262
     if cur_kind(tk, n, pi, err) == 72:
       pi[0] = pi[0] + 1
       pi[0] = pi[0] + 1
+      var mcall: int = pi[0] - 1
       if accept_k(tk, n, pi, err, 49) == 1:
+        var arg_toks: array[16, int]
+        var argc: int = 0
         if cur_kind(tk, n, pi, err) != 50:
           var done: int = 0
           while done == 0:
-            if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+            var at2: int = pi[0]
+            if argc < 16:
+              arg_toks[argc] = at2
+              argc = argc + 1
+            if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
               return 0
             if accept_k(tk, n, pi, err, 55) == 1:
               done = 0
             else:
               done = 1
         expect_k(tk, n, pi, err, 50)
+        rq_check_call(src, tk, ts, te, n, pi, err, mcall, arg_toks, argc, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
       continue
     if cur_kind(tk, n, pi, err) == 51:
       pi[0] = pi[0] + 1
-      if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n) == 0:
+      if bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
         return 0
       expect_k(tk, n, pi, err, 52)
       continue
     loop = 0
   return 1
 
-def bk_check_stmt(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_ib: var array[256, int], ls_n: var array[1, int]) -> int
+def bk_check_stmt(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_ib: var array[256, int], ls_n: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
   requires true
   ensures result == 1
   decreases 0
@@ -4484,7 +4498,7 @@ def bk_check_stmt(src: var ptr, tk: var array[262144, int], ts: var array[262144
     expect_k(tk, n, pi, err, 56)
     parse_type(src, tk, ts, te, n, pi, err, 0)
     if accept_k(tk, n, pi, err, 58) == 1:
-      bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+      bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
     ls_name[ls_n[0]] = vn
     ls_moved[ls_n[0]] = 0
     ls_mb[ls_n[0]] = 0
@@ -4543,14 +4557,14 @@ def bk_check_stmt(src: var ptr, tk: var array[262144, int], ts: var array[262144
     if cur_kind(tk, n, pi, err) != 1:
       if cur_kind(tk, n, pi, err) != 3:
         if cur_kind(tk, n, pi, err) != 0:
-          bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+          bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
     return 1
   if k == 22:
     pi[0] = pi[0] + 1
-    bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+    bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
     expect_k(tk, n, pi, err, 56)
     skip_newlines(tk, n, pi, err)
-    bk_check_block(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_ib, ls_n)
+    bk_check_block(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_ib, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
     var tail_done: int = 0
     while tail_done == 0:
       skip_newlines(tk, n, pi, err)
@@ -4583,13 +4597,13 @@ def bk_check_stmt(src: var ptr, tk: var array[262144, int], ts: var array[262144
     ok = parse_postfix(src, tk, ts, te, n, pi, err, 0)
   if ok == 1:
     if accept_k(tk, n, pi, err, 58) == 1:
-      bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+      bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
       return 1
   pi[0] = save
-  bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n)
+  bk_check_expr(src, tk, ts, te, n, pi, err, 0, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
   return 1
 
-def bk_check_block(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_ib: var array[256, int], ls_n: var array[1, int]) -> int
+def bk_check_block(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_name: var array[256, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], bp_cnt: var array[1, int], ls_name: var array[256, int], ls_moved: var array[256, int], ls_mb: var array[256, int], ls_ib: var array[256, int], ls_n: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
   requires true
   ensures result == 1
   decreases 0
@@ -4604,14 +4618,14 @@ def bk_check_block(src: var ptr, tk: var array[262144, int], ts: var array[26214
     if cur_kind(tk, n, pi, err) == 0:
       break
     var before: int = pi[0]
-    bk_check_stmt(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_ib, ls_n)
+    bk_check_stmt(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_ib, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
     if pi[0] == before:
       break
     skip_newlines(tk, n, pi, err)
   expect_k(tk, n, pi, err, 3)
   return 1
 
-def bk_skip_params_rec(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], idx: int) -> int
+def bk_skip_params_rec(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], bp_np: var array[256, int], bp_pv: var array[4096, int], bp_ps: var array[4096, int], rp_np: var array[256, int], rp_ps: var array[4096, int], idx: int) -> int
   requires true
   ensures result == 1
   decreases 0
@@ -4623,6 +4637,7 @@ def bk_skip_params_rec(src: var ptr, tk: var array[262144, int], ts: var array[2
     while done == 0:
       skip_param_layout(tk, n, pi, err)
       if cur_kind(tk, n, pi, err) == 4:
+        var pn: int = pi[0]
         pi[0] = pi[0] + 1
         expect_k(tk, n, pi, err, 56)
         var isv: int = 0
@@ -4638,6 +4653,8 @@ def bk_skip_params_rec(src: var ptr, tk: var array[262144, int], ts: var array[2
             bp_pv[idx * 16 + j] = isv
             bp_ps[idx * 16 + j] = sc
             bp_np[idx] = j + 1
+            rp_ps[idx * 16 + j] = pn
+            rp_np[idx] = j + 1
         j = j + 1
       skip_param_layout(tk, n, pi, err)
       if accept_k(tk, n, pi, err, 55) == 1:
@@ -4678,23 +4695,11 @@ def bk_skip_params_decl(src: var ptr, tk: var array[262144, int], ts: var array[
   return 1
 
 # ---- requires-clause call-site check (C++ E0304 parity) ----
-# Records each proc's `requires param op literal` clauses, then flags calls
-# whose matching argument is an int literal that makes the clause false
-# (e.g. `callee(-1)` under `requires x >= 0`). Self-contained pass in the
-# borrow_check mold: phase 1 records clauses per proc, phase 2 walks bodies
-# and validates literal call arguments.
-
-def rq_proc_index(src: var ptr, ts: var array[262144, int], te: var array[262144, int], rq_proc: var array[256, int], rq_n: var array[1, int], name_tok: int) -> int
-  requires true
-  ensures result >= -1
-  decreases 0
-=
-  var i: int = 0
-  while i < rq_n[0]:
-    if tok_eq(src, ts, te, peek256(rq_proc, i), name_tok) == 1:
-      return i
-    i = i + 1
-  return -1
+# borrow_check's phase 1 records each proc's `requires param op literal`
+# clauses (rq_capture_clause); its phase 2 walk hooks bk_check_primary /
+# bk_check_postfix, which flag calls whose matching argument is an int
+# literal that makes the clause false (e.g. `callee(-1)` under `requires
+# x >= 0`), via rq_check_call.
 
 def rq_lit_val(src: var ptr, ts: var array[262144, int], te: var array[262144, int], p: int) -> int
   requires true
@@ -4762,36 +4767,6 @@ def rq_skip_nl_at(tk: var array[262144, int], n: var array[1, int], q: int) -> i
       continue
     break
   return q
-
-def rq_skip_params_rec(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], rp_np: var array[256, int], rp_ps: var array[4096, int], idx: int) -> int
-  requires true
-  ensures result == 1
-  decreases 0
-=
-  skip_param_layout(tk, n, pi, err)
-  var j: int = 0
-  if cur_kind(tk, n, pi, err) != 50:
-    var done: int = 0
-    while done == 0:
-      skip_param_layout(tk, n, pi, err)
-      if cur_kind(tk, n, pi, err) == 4:
-        var pn: int = pi[0]
-        pi[0] = pi[0] + 1
-        expect_k(tk, n, pi, err, 56)
-        parse_type(src, tk, ts, te, n, pi, err, 0)
-        if j < 16:
-          if idx < 256:
-            rp_ps[idx * 16 + j] = pn
-            rp_np[idx] = j + 1
-        j = j + 1
-      skip_param_layout(tk, n, pi, err)
-      if accept_k(tk, n, pi, err, 55) == 1:
-        done = 0
-      else:
-        done = 1
-  skip_param_layout(tk, n, pi, err)
-  expect_k(tk, n, pi, err, 50)
-  return 1
 
 def rq_capture_clause(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], pidx: int, name_tok: int, rp_np: var array[256, int], rp_ps: var array[4096, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) raises IO -> int
   requires true
@@ -4900,292 +4875,6 @@ def rq_check_call(src: var ptr, tk: var array[262144, int], ts: var array[262144
     i = i + 1
   return 1
 
-def rq_check_primary(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
-  requires true
-  ensures result == 0 or result == 1
-  decreases 0
-=
-  var k: int = cur_kind(tk, n, pi, err)
-  if k == 34:
-    pi[0] = pi[0] + 1
-    if rq_check_primary(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-      return 0
-    return rq_check_postfix(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-  if k == 8 or k == 5 or k == 6 or k == 7:
-    pi[0] = pi[0] + 1
-    return rq_check_postfix(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-  if k == 4 or k == 46 or k == 35 or k == 36:
-    var t4: int = pi[0]
-    pi[0] = pi[0] + 1
-    if accept_k(tk, n, pi, err, 49) == 1:
-      var arg_toks: array[16, int]
-      var argc: int = 0
-      if cur_kind(tk, n, pi, err) != 50:
-        var done: int = 0
-        while done == 0:
-          var at: int = pi[0]
-          if rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-            return 0
-          if argc < 16:
-            arg_toks[argc] = at
-            argc = argc + 1
-          if accept_k(tk, n, pi, err, 55) == 1:
-            done = 0
-          else:
-            done = 1
-      expect_k(tk, n, pi, err, 50)
-      rq_check_call(src, tk, ts, te, n, pi, err, t4, arg_toks, argc, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-    return rq_check_postfix(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-  if accept_k(tk, n, pi, err, 49) == 1:
-    if rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-      return 0
-    expect_k(tk, n, pi, err, 50)
-    return rq_check_postfix(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-  err[0] = 1
-  return 0
-
-def rq_check_postfix(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
-  requires true
-  ensures result == 0 or result == 1
-  decreases 0
-=
-  var loop: int = 1
-  while loop == 1:
-    if cur_kind(tk, n, pi, err) == 72:
-      pi[0] = pi[0] + 1
-      pi[0] = pi[0] + 1
-      var mcall: int = pi[0] - 1
-      if accept_k(tk, n, pi, err, 49) == 1:
-        var arg_toks: array[16, int]
-        var argc: int = 0
-        if cur_kind(tk, n, pi, err) != 50:
-          var done: int = 0
-          while done == 0:
-            var at: int = pi[0]
-            if rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-              return 0
-            if argc < 16:
-              arg_toks[argc] = at
-              argc = argc + 1
-            if accept_k(tk, n, pi, err, 55) == 1:
-              done = 0
-            else:
-              done = 1
-        expect_k(tk, n, pi, err, 50)
-        rq_check_call(src, tk, ts, te, n, pi, err, mcall, arg_toks, argc, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-      continue
-    if cur_kind(tk, n, pi, err) == 51:
-      pi[0] = pi[0] + 1
-      if rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-        return 0
-      expect_k(tk, n, pi, err, 52)
-      continue
-    loop = 0
-  return 1
-
-def rq_check_expr(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], min_prec: int, rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
-  requires true
-  ensures result == 0 or result == 1
-  decreases 0
-=
-  if cur_kind(tk, n, pi, err) == 39:
-    pi[0] = pi[0] + 1
-    return rq_check_expr(src, tk, ts, te, n, pi, err, 100, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-  if cur_kind(tk, n, pi, err) == 60:
-    pi[0] = pi[0] + 1
-  if rq_check_primary(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-    return 0
-  while 1 == 1:
-    var p: int = prec_of(cur_kind(tk, n, pi, err))
-    if p < 0:
-      break
-    if p < min_prec:
-      break
-    pi[0] = pi[0] + 1
-    if rq_check_expr(src, tk, ts, te, n, pi, err, p + 1, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n) == 0:
-      return 0
-  return 1
-
-def rq_check_stmt(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
-  requires true
-  ensures result == 1
-  decreases 0
-=
-  var k: int = cur_kind(tk, n, pi, err)
-  if k == 0:
-    return 1
-  if k == 20:
-    pi[0] = pi[0] + 1
-    pi[0] = pi[0] + 1
-    expect_k(tk, n, pi, err, 56)
-    parse_type(src, tk, ts, te, n, pi, err, 0)
-    if accept_k(tk, n, pi, err, 58) == 1:
-      rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-    return 1
-  if k == 30:
-    pi[0] = pi[0] + 1
-    if cur_kind(tk, n, pi, err) != 1:
-      if cur_kind(tk, n, pi, err) != 3:
-        if cur_kind(tk, n, pi, err) != 0:
-          rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-    return 1
-  if k == 22:
-    pi[0] = pi[0] + 1
-    rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-    expect_k(tk, n, pi, err, 56)
-    skip_newlines(tk, n, pi, err)
-    rq_check_block(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-    var tail_done: int = 0
-    while tail_done == 0:
-      skip_newlines(tk, n, pi, err)
-      if cur_kind(tk, n, pi, err) == 24:
-        pi[0] = pi[0] + 1
-        rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-        expect_k(tk, n, pi, err, 56)
-        skip_newlines(tk, n, pi, err)
-        rq_check_block(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-      else:
-        if cur_kind(tk, n, pi, err) == 23:
-          pi[0] = pi[0] + 1
-          expect_k(tk, n, pi, err, 56)
-          skip_newlines(tk, n, pi, err)
-          rq_check_block(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-          tail_done = 1
-        else:
-          tail_done = 1
-    return 1
-  if k == 25 or k == 26 or k == 27 or k == 28 or k == 76:
-    parse_stmt(src, tk, ts, te, n, pi, err, 0)
-    return 1
-  var save: int = pi[0]
-  var ok: int = parse_primary(src, tk, ts, te, n, pi, err, 0)
-  if ok == 1:
-    ok = parse_postfix(src, tk, ts, te, n, pi, err, 0)
-  if ok == 1:
-    if accept_k(tk, n, pi, err, 58) == 1:
-      rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-      return 1
-  pi[0] = save
-  rq_check_expr(src, tk, ts, te, n, pi, err, 0, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-  return 1
-
-def rq_check_block(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int], rq_proc: var array[256, int], rq_pi: var array[256, int], rq_op: var array[256, int], rq_lit: var array[256, int], rq_left: var array[256, int], rq_n: var array[1, int]) -> int
-  requires true
-  ensures result == 1
-  decreases 0
-=
-  skip_newlines(tk, n, pi, err)
-  if expect_k(tk, n, pi, err, 2) == 0:
-    return 1
-  skip_newlines(tk, n, pi, err)
-  while 1 == 1:
-    if cur_kind(tk, n, pi, err) == 3:
-      break
-    if cur_kind(tk, n, pi, err) == 0:
-      break
-    var before: int = pi[0]
-    rq_check_stmt(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-    if pi[0] == before:
-      break
-    skip_newlines(tk, n, pi, err)
-  expect_k(tk, n, pi, err, 3)
-  return 1
-
-def requires_check(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int]) raises IO -> int
-  requires true
-  ensures result == 0 or result == 1
-  decreases 0
-=
-  var rq_proc: array[256, int]
-  var rq_pi: array[256, int]
-  var rq_op: array[256, int]
-  var rq_lit: array[256, int]
-  var rq_left: array[256, int]
-  var rq_n: array[1, int]
-  var rp_name: array[256, int]
-  var rp_np: array[256, int]
-  var rp_ps: array[4096, int]
-  var rp_cnt: array[1, int]
-  var pend: array[1, int]
-  var decl: array[1, int]
-  rq_n[0] = 0
-  rp_cnt[0] = 0
-  pend[0] = 0
-  decl[0] = 0
-  pi[0] = 0
-  skip_newlines(tk, n, pi, err)
-  while cur_kind(tk, n, pi, err) != 0:
-    var k: int = cur_kind(tk, n, pi, err)
-    if k == 11:
-      fx_skip_typealias(src, tk, ts, te, n, pi, err)
-      continue
-    if k == 76:
-      fx_skip_decorators(src, tk, ts, te, n, pi, err, pend)
-      continue
-    if k == 18:
-      parse_import(src, tk, ts, te, n, pi, err, 0)
-      skip_newlines(tk, n, pi, err)
-      continue
-    if k == 13 or k == 12 or k == 14:
-      parse_theorem(src, tk, ts, te, n, pi, err, 0, 0, 0)
-      skip_newlines(tk, n, pi, err)
-      continue
-    if k == 16 or k == 17:
-      pi[0] = pi[0] + 1
-      skip_newlines(tk, n, pi, err)
-      continue
-    if k == 32 or k == 10 or k == 33:
-      var is_ext: int = 0
-      if k == 32:
-        is_ext = 1
-        pi[0] = pi[0] + 1
-        if cur_kind(tk, n, pi, err) == 10:
-          pi[0] = pi[0] + 1
-      if k == 33:
-        pi[0] = pi[0] + 1
-        if cur_kind(tk, n, pi, err) == 10:
-          pi[0] = pi[0] + 1
-      if k == 10:
-        pi[0] = pi[0] + 1
-      if cur_kind(tk, n, pi, err) != 4:
-        err[0] = 1
-        return 1
-      var nm: int = pi[0]
-      pi[0] = pi[0] + 1
-      var idx: int = rp_cnt[0]
-      if idx < 256:
-        rp_name[idx] = nm
-        rp_np[idx] = 0
-        rp_cnt[0] = rp_cnt[0] + 1
-      fx_skip_typeparams(tk, n, pi, err)
-      expect_k(tk, n, pi, err, 49)
-      rq_skip_params_rec(src, tk, ts, te, n, pi, err, rp_np, rp_ps, idx)
-      fx_record_raises(src, tk, ts, te, n, pi, err, decl)
-      if accept_k(tk, n, pi, err, 57) == 1:
-        parse_type(src, tk, ts, te, n, pi, err, 0)
-      fx_record_raises(src, tk, ts, te, n, pi, err, decl)
-      while 1 == 1:
-        var ck: int = cur_kind(tk, n, pi, err)
-        if ck == 41:
-          rq_capture_clause(src, tk, ts, te, n, pi, err, idx, nm, rp_np, rp_ps, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-          parse_contract(src, tk, ts, te, n, pi, err, 0)
-          continue
-        if ck == 42 or ck == 43 or ck == 44 or ck == 45:
-          parse_contract(src, tk, ts, te, n, pi, err, 0)
-          continue
-        break
-      if is_ext == 0:
-        skip_newlines(tk, n, pi, err)
-        if accept_k(tk, n, pi, err, 58) == 1:
-          skip_newlines(tk, n, pi, err)
-          if cur_kind(tk, n, pi, err) == 2:
-            rq_check_block(src, tk, ts, te, n, pi, err, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
-      skip_newlines(tk, n, pi, err)
-      continue
-    err[0] = 1
-    return 1
-  return 0
-
 def borrow_check(src: var ptr, tk: var array[262144, int], ts: var array[262144, int], te: var array[262144, int], n: var array[1, int], pi: var array[1, int], err: var array[1, int]) -> int
   requires true
   ensures result == 0 or result == 1
@@ -5203,7 +4892,16 @@ def borrow_check(src: var ptr, tk: var array[262144, int], ts: var array[262144,
   var ls_mb: array[256, int]
   var ls_ib: array[256, int]
   var ls_n: array[1, int]
+  var rp_np: array[256, int]
+  var rp_ps: array[4096, int]
+  var rq_proc: array[256, int]
+  var rq_pi: array[256, int]
+  var rq_op: array[256, int]
+  var rq_lit: array[256, int]
+  var rq_left: array[256, int]
+  var rq_n: array[1, int]
   bp_cnt[0] = 0
+  rq_n[0] = 0
   pend[0] = 0
   pi[0] = 0
   skip_newlines(tk, n, pi, err)
@@ -5252,14 +4950,18 @@ def borrow_check(src: var ptr, tk: var array[262144, int], ts: var array[262144,
         bp_cnt[0] = bp_cnt[0] + 1
       fx_skip_typeparams(tk, n, pi, err)
       expect_k(tk, n, pi, err, 49)
-      bk_skip_params_rec(src, tk, ts, te, n, pi, err, bp_np, bp_pv, bp_ps, idx)
+      bk_skip_params_rec(src, tk, ts, te, n, pi, err, bp_np, bp_pv, bp_ps, rp_np, rp_ps, idx)
       fx_record_raises(src, tk, ts, te, n, pi, err, decl)
       if accept_k(tk, n, pi, err, 57) == 1:
         parse_type(src, tk, ts, te, n, pi, err, 0)
       fx_record_raises(src, tk, ts, te, n, pi, err, decl)
       while 1 == 1:
         var ck: int = cur_kind(tk, n, pi, err)
-        if ck == 41 or ck == 42 or ck == 43 or ck == 44 or ck == 45:
+        if ck == 41:
+          rq_capture_clause(src, tk, ts, te, n, pi, err, idx, nm, rp_np, rp_ps, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
+          parse_contract(src, tk, ts, te, n, pi, err, 0)
+          continue
+        if ck == 42 or ck == 43 or ck == 44 or ck == 45:
           parse_contract(src, tk, ts, te, n, pi, err, 0)
           continue
         break
@@ -5332,7 +5034,7 @@ def borrow_check(src: var ptr, tk: var array[262144, int], ts: var array[262144,
         if accept_k(tk, n, pi, err, 58) == 1:
           skip_newlines(tk, n, pi, err)
           if cur_kind(tk, n, pi, err) == 2:
-            bk_check_block(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_ib, ls_n)
+            bk_check_block(src, tk, ts, te, n, pi, err, bp_name, bp_np, bp_pv, bp_ps, bp_cnt, ls_name, ls_moved, ls_mb, ls_ib, ls_n, rq_proc, rq_pi, rq_op, rq_lit, rq_left, rq_n)
       skip_newlines(tk, n, pi, err)
       continue
     err[0] = 1
@@ -14334,11 +14036,6 @@ def main() raises IO -> int
     pi[0] = 0
     err[0] = 0
     var br: int = borrow_check(f, tk, ts, te, n, pi, err)
-    if err[0] == 1:
-      err_any[0] = 1
-    pi[0] = 0
-    err[0] = 0
-    var rr: int = requires_check(f, tk, ts, te, n, pi, err)
     if err[0] == 1:
       err_any[0] = 1
     pi[0] = 0
