@@ -1166,22 +1166,26 @@ std::string lower_expr_to(const Expr& e, const Module& module, std::vector<MirIn
           return fresh_temp();
         }
       }
-      if (e.base && e.base->kind == Expr::Kind::Field && e.index &&
-          e.base->base && e.base->base->kind == Expr::Kind::Ident &&
-          e.base->index && e.base->index->kind == Expr::Kind::Ident) {
-        const std::string base = e.base->base->ident;
-        const std::string field = e.base->index->ident;
-        const auto owner = g_object_vars.find(base);
-        if (owner != g_object_vars.end()) {
-          const auto fields = g_object_types.find(owner->second);
-          if (fields != g_object_types.end()) {
-            for (const auto& f : fields->second) {
-              if (f.name != field || f.array_elems <= 0) {
-                continue;
-              }
-              MirInsn load;
-              load.op = f.is_float ? MirOp::ArrayLoadFloat : MirOp::ArrayLoadInt;
-              load.ident = "__li_o_" + base + "_" + field;
+      if (e.base && e.base->kind == Expr::Kind::Field && e.index) {
+        // Nested object field-array loads (d.tier.vals[i]) use the flattened
+        // chain-mangled slot, like the store side; the chain minus its root
+        // names the leaf in the flattened g_object_types entry.
+        const std::string chain = obj_field_slot_chain(*e.base);
+        const std::size_t dot = chain.find('_');
+        if (!chain.empty() && dot != std::string::npos) {
+          const std::string root = chain.substr(0, dot);
+          const std::string leaf = chain.substr(dot + 1);
+          const auto owner = g_object_vars.find(root);
+          if (owner != g_object_vars.end()) {
+            const auto fields = g_object_types.find(owner->second);
+            if (fields != g_object_types.end()) {
+              for (const auto& f : fields->second) {
+                if (f.name != leaf || f.array_elems <= 0) {
+                  continue;
+                }
+                MirInsn load;
+                load.op = f.is_float ? MirOp::ArrayLoadFloat : MirOp::ArrayLoadInt;
+                load.ident = "__li_o_" + chain;
               if (e.index->kind == Expr::Kind::IntLit) {
                 load.index_is_literal = true;
                 load.int_value = e.index->int_value;
@@ -1199,6 +1203,7 @@ std::string lower_expr_to(const Expr& e, const Module& module, std::vector<MirIn
               return dest;
             }
           }
+        }
         }
       }
       if (e.base && e.base->kind == Expr::Kind::Ident && e.index) {

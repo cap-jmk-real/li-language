@@ -638,6 +638,11 @@ suite = "objects"
 file = "objects/nested_index_write.li"
 outcome = "verify_ok"
 
+[[tests]]
+suite = "objects"
+file = "objects/nested_index_read.li"
+outcome = "verify_ok"
+
 # --- integration (bootstrap / self-host seed) ---
 
 [[tests]]
