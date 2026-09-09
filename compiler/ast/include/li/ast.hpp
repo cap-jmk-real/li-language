@@ -65,6 +65,7 @@ struct Expr {
   Span span;
   std::int64_t int_value = 0;
   double float_value = 0.0;
+  bool is_binary = false;
   std::string ident;
   std::string str_value;
   BinOp bin_op = BinOp::Add;

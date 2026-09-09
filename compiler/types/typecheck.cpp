@@ -14,7 +14,7 @@ namespace {
 
 enum class TyKind {
   Int, Int64, Ptr, Float, Bool, Str, Array, Simd, List, Dict, Tuple, TypedDict, Enum,
-  Named, TypeVar, Protocol, Callable
+  Named, TypeVar, Protocol, Callable, Int32, UInt8, Float32, Float8, Binary
 };
 
 struct Ty;
@@ -42,6 +42,22 @@ TyPtr make_bool() { return std::make_shared<Ty>(Ty{TyKind::Bool}); }
 TyPtr make_str() { return std::make_shared<Ty>(Ty{TyKind::Str}); }
 TyPtr make_i64() { return std::make_shared<Ty>(Ty{TyKind::Int64}); }
 TyPtr make_ptr() { return std::make_shared<Ty>(Ty{TyKind::Ptr}); }
+TyPtr make_int32() { return std::make_shared<Ty>(Ty{TyKind::Int32}); }
+TyPtr make_uint8() { return std::make_shared<Ty>(Ty{TyKind::UInt8}); }
+TyPtr make_float32() { return std::make_shared<Ty>(Ty{TyKind::Float32}); }
+TyPtr make_float8() { return std::make_shared<Ty>(Ty{TyKind::Float8}); }
+TyPtr make_binary() { return std::make_shared<Ty>(Ty{TyKind::Binary}); }
+
+// Numeric families, mirroring the walker's tc_is_int / tc_is_float
+// (bootstrap/lic/main.li): int-family is int/int64/int32/uint8, float-family
+// is float/float32/float8; `binary` is not numeric.
+bool is_int_family(TyKind k) {
+  return k == TyKind::Int || k == TyKind::Int64 || k == TyKind::Int32 || k == TyKind::UInt8;
+}
+
+bool is_float_family(TyKind k) {
+  return k == TyKind::Float || k == TyKind::Float32 || k == TyKind::Float8;
+}
 
 TyPtr make_simd(std::int64_t lanes) {
   auto t = std::make_shared<Ty>();
@@ -392,6 +408,15 @@ struct Ctx {
         (value->kind == TyKind::Int64 && expected->kind == TyKind::Ptr)) {
       return true;
     }
+    // Fixed-width scalars are interchangeable within their numeric family,
+    // mirroring the walker's check layer (it records the declared type
+    // without comparing init-expression type codes). `binary` is not numeric.
+    if (is_int_family(value->kind) && is_int_family(expected->kind)) {
+      return true;
+    }
+    if (is_float_family(value->kind) && is_float_family(expected->kind)) {
+      return true;
+    }
     return same_kind(value, expected);
   }
 
@@ -537,6 +562,23 @@ struct Ctx {
       if (te.name == "int64" || te.name == "i64" || te.name == "long") {
         return make_i64();
       }
+      // Fixed-width scalars (walker codes 15-18 and 4): accepted by the Li
+      // walker's tc_prim_type but unknown to the C++ typechecker.
+      if (te.name == "int32" || te.name == "i32") {
+        return make_int32();
+      }
+      if (te.name == "uint8" || te.name == "u8") {
+        return make_uint8();
+      }
+      if (te.name == "float32" || te.name == "f32") {
+        return make_float32();
+      }
+      if (te.name == "float8" || te.name == "f8") {
+        return make_float8();
+      }
+      if (te.name == "binary") {
+        return make_binary();
+      }
       if (te.name == "str") {
         auto t = std::make_shared<Ty>();
         t->kind = TyKind::Str;
@@ -562,7 +604,8 @@ struct Ctx {
   TyPtr type_of(const Expr& e) {
     switch (e.kind) {
       case Expr::Kind::IntLit:
-        return make_int();
+        // `0b10110100` literals are the binary type (walker tc_primary k==7).
+        return e.is_binary ? make_binary() : make_int();
       case Expr::Kind::FloatLit:
         return make_float();
       case Expr::Kind::StringLit:
@@ -581,11 +624,20 @@ struct Ctx {
         if (e.bin_op == BinOp::Add || e.bin_op == BinOp::Sub || e.bin_op == BinOp::Mul ||
             e.bin_op == BinOp::Div || e.bin_op == BinOp::Mod || e.bin_op == BinOp::FloorDiv ||
             e.bin_op == BinOp::Pow) {
-          if (l->kind == TyKind::Int && r->kind == TyKind::Int) {
+          // Same-kind arithmetic preserves the operand kind (int, int32,
+          // float, float32, ...) mirroring the walker's tc_binop_type;
+          // mixing widths within a numeric family is an error there too.
+          if (l->kind == r->kind &&
+              (is_int_family(l->kind) || is_float_family(l->kind))) {
+            return l;
+          }
+          if (is_int_family(l->kind) && is_int_family(r->kind)) {
+            diags.error(loc(e.span), "cannot mix int widths without explicit cast");
             return make_int();
           }
-          if (l->kind == TyKind::Float && r->kind == TyKind::Float) {
-            return make_float();
+          if (is_float_family(l->kind) && is_float_family(r->kind)) {
+            diags.error(loc(e.span), "cannot mix float widths without explicit cast");
+            return make_int();
           }
           // Elementwise array binop: `a + b` / `a * b` on same-shape float or
           // int arrays lowers to ArrayBinOpF64/I64; size is max for broadcast

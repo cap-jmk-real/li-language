@@ -272,7 +272,8 @@ int main(int argc, char** argv) {
       4,   // Ident -> 4
       5,   // IntLit -> 5
       6,   // FloatLit -> 6
-      8,   // StringLit -> 8 (walker has BinaryLit=7 first)
+      7,   // BinaryLit -> 7
+      8,   // StringLit -> 8
       9,   // KwProc -> 9
       11,  // KwType -> 11 (walker: def=10, type=11)
       15,  // KwObject -> 15

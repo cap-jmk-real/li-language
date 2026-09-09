@@ -42,6 +42,10 @@ CORPUS_OK=(
   "li-tests/collections/enum_ok.li"
   "li-tests/collections/tuple_pair.li"
   "li-tests/lexer_parser/parser_accept_elif.li"
+  "li-tests/typecheck/scalar_width_ok.li"
+  "li-tests/typecheck/literal_suffix_ok.li"
+  "li-tests/typecheck/binary_literal_ok.li"
+  "li-tests/generics/precision_real_alias.li"
 )
 
 # Corpus: files both sides must reject. Entries are `file:EXXXX` when a

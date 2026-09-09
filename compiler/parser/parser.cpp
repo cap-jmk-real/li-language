@@ -293,12 +293,13 @@ std::unique_ptr<Expr> Parser::parse_primary() {
     }
     return parse_postfix(std::move(e));
   }
-  if (t.kind == TokenKind::IntLit) {
+  if (t.kind == TokenKind::IntLit || t.kind == TokenKind::BinaryLit) {
     i++;
     auto e = std::make_unique<Expr>();
     e->kind = Expr::Kind::IntLit;
     e->span = {t.start, t.end};
     e->int_value = t.int_value;
+    e->is_binary = t.kind == TokenKind::BinaryLit;
     return parse_postfix(std::move(e));
   }
   if (t.kind == TokenKind::FloatLit) {

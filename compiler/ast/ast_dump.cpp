@@ -149,7 +149,8 @@ int binop_token_kind(BinOp b) {
 void dump_expr(const Expr& e, Dumper& d) {
   switch (e.kind) {
     case Expr::Kind::IntLit:
-      d.line_lex(60, e.span);
+      // 60 EXPR_INT / 62 EXPR_BINARY (shared node table in ast_dump.hpp).
+      d.line_lex(e.is_binary ? 62 : 60, e.span);
       break;
     case Expr::Kind::FloatLit:
       d.line_lex(61, e.span);
