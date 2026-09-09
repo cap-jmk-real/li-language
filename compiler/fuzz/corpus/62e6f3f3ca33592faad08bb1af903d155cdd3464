@@ -1,0 +1,6 @@
+p() -> int
+  requires true
+  ensures true
+  decrres t 0
+=
+  return 0
