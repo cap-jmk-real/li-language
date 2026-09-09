@@ -946,12 +946,30 @@ std::string lower_expr_to(const Expr& e, const Module& module, std::vector<MirIn
           }
           MirArg ma;
           // Whole-object by-value args that are not object vars (field
-          // accesses like `d.tier`, nested object-returning calls, ...) lower
-          // to the walker's collapsed base name; record the object's leaf
-          // layout so emit expands the ARG back into per-leaf values.
+          // accesses like `d.tier`, nested object-returning calls, ...).
+          // When the arg is a field-access chain rooted at an object var,
+          // the walker resolves the callee's param type and emits one ARG
+          // per leaf field (mir_arg_obj_line); otherwise it collapses to the
+          // base name and we record the leaf layout so emit expands the ARG
+          // back into per-leaf values.
           if (ai < callee->params.size() &&
               callee->params[ai].type.kind == TypeKind::Named &&
               g_object_types.count(callee->params[ai].type.name) > 0) {
+            const std::string chain = obj_field_slot_chain(arg);
+            if (!chain.empty()) {
+              const bool by_ref =
+                  ai > 0 && callee->params[ai].type.is_var;
+              for (const auto& field : g_object_types[callee->params[ai].type.name]) {
+                MirArg field_arg;
+                field_arg.ident = "__li_o_" + chain + "_" + field.name;
+                if (field.array_elems > 0 || is_array_ident(field_arg.ident)) {
+                  field_arg.is_array_ident = true;
+                }
+                field_arg.is_var_ref = by_ref;
+                ins.args.push_back(std::move(field_arg));
+              }
+              continue;
+            }
             for (const auto& field : g_object_types[callee->params[ai].type.name]) {
               MirParam lp;
               lp.name = field.name;
