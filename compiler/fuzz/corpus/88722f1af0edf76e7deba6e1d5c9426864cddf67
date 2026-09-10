@@ -1,0 +1,4 @@
+@cpu*
+@parallel(disjoint=sjoensures true
+  decreases #0 P
+a
