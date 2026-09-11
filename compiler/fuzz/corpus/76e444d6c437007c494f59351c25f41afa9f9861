@@ -1,0 +1,5 @@
+p-oc p -> int
+  requires true
+  s 0
+=
+  return 0
